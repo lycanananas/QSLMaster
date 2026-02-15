@@ -102,7 +102,7 @@ class QRZAPI:
             
             valid_methods = [
                 'biuro', 'bureau', 'bureua', 'bireau', 'bureao', 'buiro', 'biro',
-                'buro', 'büro', 'agence', 'direct'
+                'buro', 'büro', 'agence'
             ]
             return any(method in qslmgr for method in valid_methods)
         except QRZAPIError:

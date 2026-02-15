@@ -25,6 +25,7 @@ AVERY_70X25 = {
 }
 
 LABEL_PADDING = 2 * mm
+LABEL_PADDING_LEFT = 3 * mm
 LABEL_TOP_OFFSET = 2 * mm
 HEADER_FONT_SIZE = 12
 DATA_FONT_SIZE = 8
@@ -72,7 +73,7 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     
     display_mode = submode if submode else mode
     
-    x_start = x + LABEL_PADDING
+    x_start = x + LABEL_PADDING + LABEL_PADDING_LEFT
     y_start = y - LABEL_PADDING - LABEL_TOP_OFFSET
     
     current_y = y_start
