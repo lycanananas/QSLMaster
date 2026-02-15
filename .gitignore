@@ -37,6 +37,9 @@ wheels/
 *.adi
 *.adif
 
+# PDF
+*.pdf
+
 # OS
 .DS_Store
 .DS_Store?

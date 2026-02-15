@@ -20,6 +20,7 @@ from wavelog import WavelogAPI, WavelogAPIError
 from qrz import QRZAPI, QRZAPIError
 from poland import process_qsos_poland
 from other import process_qsos_other
+from pdf_labels import generate_pdf_labels, preview_label_data
 
 
 logger = logging.getLogger(__name__)
@@ -342,6 +343,13 @@ Usage examples:
         help='Path to output ADIF file for QSOs to send'
     )
     
+    parser.add_argument(
+        '--generate-pdf',
+        type=str,
+        default=None,
+        help='Generate PDF labels and save to specified file (e.g., labels.pdf)'
+    )
+    
     args = parser.parse_args()
     
     setup_logging(verbose=args.verbose)
@@ -408,6 +416,17 @@ Usage examples:
                 for qso in all_qsl_qsos:
                     f.write(adif_io.qso_to_adif(qso))
             logger.info(f"Total {len(all_qsl_qsos)} QSOs to send saved to: {args.output_adif}")
+            
+            if args.generate_pdf:
+                try:
+                    if args.verbose:
+                        preview_label_data(all_qsl_qsos, limit=3)
+                    generate_pdf_labels(all_qsl_qsos, args.generate_pdf, config)
+                except Exception as e:
+                    logger.error(f"Failed to generate PDF labels: {e}")
+                    if args.verbose:
+                        import traceback
+                        logger.debug(traceback.format_exc())
             
         except (WavelogAPIError, ValueError) as e:
             logger.error(f"Error processing ADIF data: {e}")
