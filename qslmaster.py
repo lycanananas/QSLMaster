@@ -117,12 +117,28 @@ def log_version_info(version_data: dict) -> None:
     logger.info(f"Wavelog Version: {version_data.get('version', 'N/A')}")
 
 
+def log_stations_info(api_client: WavelogAPI) -> None:
+    try:
+        stations = api_client.get_station_info()
+        logger.info(f"Found {len(stations)} station(s):")
+        for station in stations:
+            station_id = station.get('station_id')
+            callsign = station.get('station_callsign')
+            profile = station.get('station_profile_name')
+            active = station.get('station_active')
+            status = "(active)" if active == "1" else "(inactive)"
+            logger.info(f"  Station {station_id}: {callsign} - {profile} {status}")
+    except WavelogAPIError as e:
+        logger.warning(f"Could not retrieve station info: {e}")
+
+
 def check_api_health(api_client: WavelogAPI) -> bool:
     try:
         logger.info("Checking Wavelog API availability...")
         version_data = api_client.get_version()
         logger.info("Wavelog API is available!")
         log_version_info(version_data)
+        log_stations_info(api_client)
         return True
     except WavelogAPIError as e:
         logger.error(f"API error: {e}")
@@ -131,7 +147,7 @@ def check_api_health(api_client: WavelogAPI) -> bool:
 
 def download_adif(api_client: WavelogAPI) -> Tuple[str, int]:
     try:
-        logger.info(f"Downloading contacts in ADIF format from station {api_client.station_id}...")
+        logger.info("Downloading contacts in ADIF format from all stations...")
         adif_content, qso_count = api_client.get_contacts_adif()
         logger.info(f"Successfully downloaded {qso_count} QSOs")
         return adif_content, qso_count
@@ -365,13 +381,11 @@ Usage examples:
         logger.info("Configuration loaded and validated")
         
         if args.verbose:
-            logger.debug(f"Station ID: {config['station_id']}")
             logger.debug(f"Wavelog URL: {config['wavelog_url']}")
         
         api_client = WavelogAPI(
             base_url=config['wavelog_url'],
-            api_key=config['api_key'],
-            station_id=config['station_id']
+            api_key=config['api_key']
         )
         
         if not check_api_health(api_client):

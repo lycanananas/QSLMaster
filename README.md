@@ -5,6 +5,7 @@ Download QSO from Wavelog platform for QSL card label preparation.
 ## Requirements
 
 - Python 3.7+
+- Wavelog 2.0.0 or higher
 - requests >= 2.28.0
 - adif-io >= 0.2.5
 - pyhamtools >= 0.12.0
@@ -45,16 +46,16 @@ cp config.example.json config.json
 
 2. Edit `config.json` and fill in:
    - `api_key`: Your API key from Wavelog
-   - `station_id`: Your station ID in Wavelog
    - `wavelog_url`: URL of your Wavelog instance (e.g., https://your-wavelog-instance.com)
    - `qrz_username`: Your QRZ.com username (premium account required for bureau verification)
    - `qrz_password`: Your QRZ.com password
+
+**Note**: The tool automatically retrieves your station ID from Wavelog using the `api/station_info` endpoint. This requires Wavelog version 2.0.0 or higher.
 
 ### Example `config.json`:
 ```json
 {
   "api_key": "your_api_key_here",
-  "station_id": "A123A",
   "wavelog_url": "https://wavelog.example.com",
   "qrz_username": "your_qrz_username",
   "qrz_password": "your_qrz_password"

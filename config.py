@@ -25,7 +25,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
     except IOError as e:
         raise ConfigError(f"Error reading configuration file: {e}")
     
-    required_fields = ['api_key', 'station_id', 'wavelog_url']
+    required_fields = ['api_key', 'wavelog_url']
     optional_fields = ['qrz_username', 'qrz_password']
     
     missing_fields = [field for field in required_fields if field not in config]
@@ -42,9 +42,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
 def validate_config(config: Dict[str, Any]) -> bool:
     if not config.get('api_key') or not isinstance(config['api_key'], str):
         raise ConfigError("api_key must be a non-empty string")
-    
-    if not config.get('station_id') or not isinstance(config['station_id'], str):
-        raise ConfigError("station_id must be a non-empty string")
     
     if not config.get('wavelog_url') or not isinstance(config['wavelog_url'], str):
         raise ConfigError("wavelog_url must be a non-empty string")
