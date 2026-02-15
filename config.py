@@ -26,10 +26,15 @@ def load_config(config_path: str) -> Dict[str, Any]:
         raise ConfigError(f"Error reading configuration file: {e}")
     
     required_fields = ['api_key', 'station_id', 'wavelog_url']
-    missing_fields = [field for field in required_fields if field not in config]
+    optional_fields = ['qrz_username', 'qrz_password']
     
+    missing_fields = [field for field in required_fields if field not in config]
     if missing_fields:
         raise ConfigError(f"Missing required configuration fields: {', '.join(missing_fields)}")
+    
+    for field in optional_fields:
+        if field not in config:
+            config[field] = ''
     
     return config
 
@@ -47,5 +52,11 @@ def validate_config(config: Dict[str, Any]) -> bool:
     url = config['wavelog_url'].strip()
     if not url.startswith(('http://', 'https://')):
         raise ConfigError("wavelog_url must start with http:// or https://")
+    
+    if not isinstance(config.get('qrz_username'), str):
+        raise ConfigError("qrz_username must be a string")
+    
+    if not isinstance(config.get('qrz_password'), str):
+        raise ConfigError("qrz_password must be a string")
     
     return True

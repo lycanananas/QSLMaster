@@ -33,6 +33,10 @@ wheels/
 # Configuration
 *.json
 
+# Adif
+*.adi
+*.adif
+
 # OS
 .DS_Store
 .DS_Store?
