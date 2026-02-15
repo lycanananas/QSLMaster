@@ -118,18 +118,15 @@ def log_version_info(version_data: dict) -> None:
 
 
 def log_stations_info(api_client: WavelogAPI) -> None:
-    try:
-        stations = api_client.get_station_info()
-        logger.info(f"Found {len(stations)} station(s):")
-        for station in stations:
-            station_id = station.get('station_id')
-            callsign = station.get('station_callsign')
-            profile = station.get('station_profile_name')
-            active = station.get('station_active')
-            status = "(active)" if active == "1" else "(inactive)"
-            logger.info(f"  Station {station_id}: {callsign} - {profile} {status}")
-    except WavelogAPIError as e:
-        logger.warning(f"Could not retrieve station info: {e}")
+    stations = api_client.get_station_info()
+    logger.info(f"Found {len(stations)} station(s):")
+    for station in stations:
+        station_id = station.get('station_id')
+        callsign = station.get('station_callsign')
+        profile = station.get('station_profile_name')
+        active = station.get('station_active')
+        status = "(active)" if active == "1" else "(inactive)"
+        logger.info(f"  Station {station_id}: {callsign} - {profile} {status}")
 
 
 def check_api_health(api_client: WavelogAPI) -> bool:
