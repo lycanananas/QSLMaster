@@ -1,11 +1,13 @@
 import logging
 from typing import List, Dict
 from datetime import datetime
+from pathlib import Path
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm, inch
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
+from reportlab.lib.utils import ImageReader
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,12 @@ SPACING_AFTER_VIA = 2 * mm
 SPACING_NO_VIA = 1 * mm
 TOTAL_SEPARATOR_SPACE = 2 * mm
 SPACING_BETWEEN_FIELDS = 3 * mm
+
+LOGO_IMAGE_PATH = "logo.png"
+LOGO_WIDTH = 15 * mm
+LOGO_HEIGHT = 15 * mm
+LOGO_RIGHT_MARGIN = 2 * mm
+LOGO_TOP_MARGIN = 2 * mm
 
 
 def format_date(date_str: str) -> str:
@@ -127,6 +135,22 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     current_y -= SPACING_BETWEEN_FIELDS
     
     if band:
+        c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+        c.drawString(x_start, current_y, "Band:")
+        c.setFont("Helvetica", DATA_FONT_SIZE)
+        band_x = x_start + c.stringWidth("Band: ", "Helvetica-Bold", DATA_FONT_SIZE)
+        c.drawString(band_x, current_y, band)
+    
+    logo_path = Path(__file__).parent / LOGO_IMAGE_PATH
+    if logo_path.exists():
+        try:
+            img = ImageReader(str(logo_path))
+            logo_x = x + width - LABEL_PADDING - LOGO_WIDTH - LOGO_RIGHT_MARGIN
+            logo_y = y - LABEL_PADDING - LOGO_TOP_MARGIN - LOGO_HEIGHT
+            c.drawImage(img, logo_x, logo_y, width=LOGO_WIDTH, height=LOGO_HEIGHT, mask='auto')
+        except Exception as e:
+            logger.warning(f"Failed to load logo image: {e}")
+    
         c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
         c.drawString(x_start, current_y, "Band:")
         c.setFont("Helvetica", DATA_FONT_SIZE)
