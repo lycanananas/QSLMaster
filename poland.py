@@ -80,6 +80,7 @@ def process_qsos_poland(qsos: List) -> List[Dict[str, object]]:
             qso_copy = dict(qso)
             qso_copy["QSL_VIA"] = f"OT-{via_text}"
             qso_copy["QSL_SENT"] = "Y"
+            qso_copy["QSL_SENT_VIA"] = "B"
             results.append(qso_copy)
 
     return results

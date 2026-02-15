@@ -1,6 +1,6 @@
 import requests
 import xml.etree.ElementTree as ET
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class QRZAPIError(Exception):
@@ -76,9 +76,11 @@ class QRZAPI:
         except ET.ParseError as e:
             raise QRZAPIError(f"QRZ response parse error: {e}")
     
-    def has_qsl_manager(self, callsign: str) -> bool:
+    def has_qsl_manager(self, callsign: str = '', data: Optional[Dict[str, Any]] = None) -> bool:
         try:
-            data = self.lookup_call(callsign)
+            if data is None:
+                data = self.lookup_call(callsign)
+            
             qslmgr = data.get('qslmgr', '').lower()
             
             if not qslmgr:
