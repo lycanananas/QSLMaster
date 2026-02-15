@@ -7,14 +7,11 @@ import requests
 import urllib.parse
 import zipfile
 import io
-
-
 from typing import Optional, List, Tuple, Dict, Any
 from datetime import datetime
 from pyhamtools.callinfo import Callinfo
 from pyhamtools.lookuplib import LookupLib
 from pathlib import Path
-
 from config import load_config, validate_config, ConfigError
 from wavelog import WavelogAPI, WavelogAPIError
 from qrz import QRZAPI, QRZAPIError
@@ -350,6 +347,12 @@ Usage examples:
         help='Generate PDF labels and save to specified file (e.g., labels.pdf)'
     )
     
+    parser.add_argument(
+        '--debug-labels',
+        action='store_true',
+        help='Draw borders around labels in PDF for debugging alignment'
+    )
+    
     args = parser.parse_args()
     
     setup_logging(verbose=args.verbose)
@@ -421,7 +424,7 @@ Usage examples:
                 try:
                     if args.verbose:
                         preview_label_data(all_qsl_qsos, limit=3)
-                    generate_pdf_labels(all_qsl_qsos, args.generate_pdf, config)
+                    generate_pdf_labels(all_qsl_qsos, args.generate_pdf, args.debug_labels)
                 except Exception as e:
                     logger.error(f"Failed to generate PDF labels: {e}")
                     if args.verbose:

@@ -1,12 +1,7 @@
-"""
-PDF Label Generator for QSL Cards
-Supports Avery 5160 format (30 labels per page, 3 columns × 10 rows)
-"""
-
 import logging
 from typing import List, Dict
 from datetime import datetime
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm, inch
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
@@ -14,31 +9,41 @@ from reportlab.platypus import Table, TableStyle
 
 logger = logging.getLogger(__name__)
 
-AVERY_5160 = {
-    'page_width': 215.9,
-    'page_height': 279.4,
-    'label_width': 66.675,
+AVERY_70X25 = {
+    'page_width': 210,
+    'page_height': 297,
+    'label_width': 70,
     'label_height': 25.4,
     'columns': 3,
-    'rows': 10,
-    'left_margin': 4.7625,
-    'top_margin': 12.7,
-    'column_gap': 3.175,
+    'rows': 11,
+    'left_margin': 0,
+    'top_margin': 4.5,
+    'column_gap': 0,
     'row_gap': 0,
 }
 
+LABEL_PADDING = 2 * mm
+LABEL_TOP_OFFSET = 2 * mm
+HEADER_FONT_SIZE = 12
+DATA_FONT_SIZE = 8
+UNDERLINE_OFFSET = 0.5 * mm
+LINE_WIDTH = 0.5
+SPACING_AFTER_HEADER = 3 * mm
+SPACING_AFTER_VIA = 2 * mm
+SPACING_NO_VIA = 1 * mm
+TOTAL_SEPARATOR_SPACE = 2 * mm
+SPACING_BETWEEN_FIELDS = 3 * mm
+
 
 def format_date(date_str: str) -> str:
-    """Convert YYYYMMDD to readable format"""
     try:
         dt = datetime.strptime(date_str, '%Y%m%d')
-        return dt.strftime('%d %b %Y')
+        return dt.strftime('%d.%m.%Y')
     except:
         return date_str
 
 
 def format_time(time_str: str) -> str:
-    """Convert HHMMSS to HH:MM"""
     try:
         if len(time_str) >= 4:
             return f"{time_str[:2]}:{time_str[2:4]}"
@@ -47,9 +52,7 @@ def format_time(time_str: str) -> str:
         return time_str
 
 
-def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float):
-    """Draw a single QSL label at the specified position"""
-    
+def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False):
     callsign = qso.get('CALL', 'N/A')
     via = qso.get('QSL_VIA', '').strip()
     date = format_date(qso.get('QSO_DATE', ''))
@@ -61,65 +64,92 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     
     display_mode = submode if submode else mode
     
-    padding = 2 * mm
-    x_start = x + padding
-    y_start = y - padding
-    
-    header_size = 9
-    data_size = 7
-    label_size = 6
+    x_start = x + LABEL_PADDING
+    y_start = y - LABEL_PADDING - LABEL_TOP_OFFSET
     
     current_y = y_start
     
-    c.setFont("Helvetica-Bold", header_size)
-    c.drawString(x_start, current_y, f"To Radio: {callsign}")
-    current_y -= 3 * mm
+    c.setFont("Helvetica-Bold", HEADER_FONT_SIZE)
+    c.drawString(x_start, current_y, "To Radio:")
+    c.setFont("Helvetica", HEADER_FONT_SIZE)
+    callsign_x = x_start + c.stringWidth("To Radio: ", "Helvetica-Bold", HEADER_FONT_SIZE)
+    c.drawString(callsign_x, current_y, callsign)
+    callsign_width = c.stringWidth(callsign, "Helvetica", HEADER_FONT_SIZE)
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(LINE_WIDTH)
+    c.line(callsign_x, current_y - UNDERLINE_OFFSET, callsign_x + callsign_width, current_y - UNDERLINE_OFFSET)
+    current_y -= SPACING_AFTER_HEADER
+    
+    via_y = current_y
     
     if via:
-        c.setFont("Helvetica", data_size)
-        c.drawString(x_start, current_y, f"Via: {via}")
-        current_y -= 3.5 * mm
+        c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+        c.drawString(x_start, current_y, "Via:")
+        c.setFont("Helvetica", DATA_FONT_SIZE)
+        via_x = x_start + c.stringWidth("Via: ", "Helvetica-Bold", DATA_FONT_SIZE)
+        c.drawString(via_x, current_y, via)
+        via_width = c.stringWidth(via, "Helvetica", DATA_FONT_SIZE)
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(LINE_WIDTH)
+        c.line(via_x, current_y - UNDERLINE_OFFSET, via_x + via_width, current_y - UNDERLINE_OFFSET)
+        current_y -= SPACING_AFTER_VIA
     else:
-        current_y -= 1 * mm
+        current_y = via_y - SPACING_AFTER_VIA
     
-    c.setStrokeColor(colors.grey)
-    c.setLineWidth(0.5)
-    c.line(x_start, current_y, x + width - padding, current_y)
-    current_y -= 1.5 * mm
+    current_y -= TOTAL_SEPARATOR_SPACE
     
-    c.setFont("Helvetica", data_size)
+    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(x_start, current_y, "Date:")
+    c.setFont("Helvetica", DATA_FONT_SIZE)
+    date_x = x_start + c.stringWidth("Date: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(date_x, current_y, date)
+    current_y -= SPACING_BETWEEN_FIELDS
     
-    c.drawString(x_start, current_y, f"Date: {date}")
-    current_y -= 2.5 * mm
-    c.drawString(x_start, current_y, f"Time: {time} UTC")
-    current_y -= 2.5 * mm
+    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(x_start, current_y, "Time:")
+    c.setFont("Helvetica", DATA_FONT_SIZE)
+    time_x = x_start + c.stringWidth("Time: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(time_x, current_y, f"{time} UTC")
+    current_y -= SPACING_BETWEEN_FIELDS
     
-    c.drawString(x_start, current_y, f"RST: {rst_sent}")
-    c.drawString(x_start + 15 * mm, current_y, f"Mode: {display_mode}")
+    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(x_start, current_y, "RST:")
+    c.setFont("Helvetica", DATA_FONT_SIZE)
+    rst_x = x_start + c.stringWidth("RST: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(rst_x, current_y, rst_sent)
+    current_y -= SPACING_BETWEEN_FIELDS
+    
+    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(x_start, current_y, "Mode:")
+    c.setFont("Helvetica", DATA_FONT_SIZE)
+    mode_x = x_start + c.stringWidth("Mode: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.drawString(mode_x, current_y, display_mode)
+    current_y -= SPACING_BETWEEN_FIELDS
+    
     if band:
-        c.drawString(x_start + 35 * mm, current_y, f"Band: {band}")
+        c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+        c.drawString(x_start, current_y, "Band:")
+        c.setFont("Helvetica", DATA_FONT_SIZE)
+        band_x = x_start + c.stringWidth("Band: ", "Helvetica-Bold", DATA_FONT_SIZE)
+        c.drawString(band_x, current_y, band)
+    
+    if debug_mode:
+        c.setStrokeColor(colors.red)
+        c.setLineWidth(LINE_WIDTH)
+        c.rect(x, y - height, width, height)
 
 
-def generate_pdf_labels(qsos: List[Dict], output_path: str, config: Dict = None):
-    """
-    Generate PDF with QSL labels in Avery 5160 format
-    
-    Args:
-        qsos: List of QSO dictionaries
-        output_path: Path to save the PDF file
-        config: Optional configuration dictionary
-    """
-    
+def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = False):
     if not qsos:
         logger.warning("No QSOs to generate labels for")
         return
     
     logger.info(f"Generating PDF labels for {len(qsos)} QSOs")
     
-    specs = AVERY_5160
+    specs = AVERY_70X25
     
-    c = canvas.Canvas(output_path, pagesize=letter)
-    page_width, page_height = letter
+    c = canvas.Canvas(output_path, pagesize=A4)
+    page_width, page_height = A4
     
     def mm_to_points(mm_val):
         return mm_val * mm
@@ -147,7 +177,7 @@ def generate_pdf_labels(qsos: List[Dict], output_path: str, config: Dict = None)
                 x = left_margin + col * (label_width + column_gap)
                 y = page_height - top_margin - row * (label_height + row_gap)
                 
-                draw_label(c, qsos[qso_index], x, y, label_width, label_height)
+                draw_label(c, qsos[qso_index], x, y, label_width, label_height, debug_mode)
                 
                 qso_index += 1
             
@@ -162,9 +192,6 @@ def generate_pdf_labels(qsos: List[Dict], output_path: str, config: Dict = None)
 
 
 def preview_label_data(qsos: List[Dict], limit: int = 3):
-    """
-    Preview what will be printed on labels (for debugging)
-    """
     logger.info(f"Preview of first {min(limit, len(qsos))} labels:")
     
     for i, qso in enumerate(qsos[:limit]):
