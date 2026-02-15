@@ -2,12 +2,21 @@ import argparse
 import sys
 import json
 import logging
+import adif_io
+import requests
+import urllib.parse
+import zipfile
+import io
+
+
 from typing import Optional, List, Tuple
 from datetime import datetime
+from pyhamtools.callinfo import Callinfo
+from pyhamtools.lookuplib import LookupLib
+from pathlib import Path
 
 from config import load_config, validate_config, ConfigError
 from api import WavelogAPI, WavelogAPIError
-import adif_io
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +36,71 @@ def setup_logging(verbose: bool = False) -> None:
     
     logger.setLevel(level)
     logger.addHandler(handler)
+
+
+def setup_callinfo() -> Callinfo:
+    cache_dir = Path.home() / '.cache' / 'qslmaster'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    country_file = cache_dir / 'cty.plist'
+    metadata_file = cache_dir / '.cty_metadata.json'
+    
+    url = 'https://www.country-files.com/cty/download/cty_plist.zip'
+    download_success = False
+    
+    logger.info("Attempting to download fresh country file (plist)...")
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+            plist_files = [f for f in zf.namelist() if f.endswith('.plist')]
+            if not plist_files:
+                raise Exception("No .plist file found in ZIP")
+            
+            plist_content = zf.read(plist_files[0])
+            with open(country_file, 'wb') as f:
+                f.write(plist_content)
+            
+            metadata = {
+                'downloaded_at': datetime.now().isoformat(),
+                'url': url,
+                'source': 'https://www.country-files.com/cty/'
+            }
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            logger.info(f"Successfully downloaded and saved country file from {url}")
+            download_success = True
+            
+    except Exception as e:
+        logger.warning(f"Failed to download fresh country file: {e}")
+        logger.info("Attempting to use cached version as fallback...")
+        
+        if not country_file.exists():
+            logger.error("Country file not available - download failed and no cached version found")
+            raise Exception("Cannot initialize CallInfo: country file unavailable and download failed")
+        
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                    download_time = metadata.get('downloaded_at', 'unknown')
+                    logger.warning(f"Using cached country file from {download_time}")
+            except Exception:
+                logger.warning("Using cached country file (metadata unavailable)")
+        else:
+            logger.warning("Using cached country file (download date unknown)")
+    
+    try:
+        lookup_library = LookupLib(lookuptype="countryfile", filename=str(country_file))
+        callinfo = Callinfo(lookup_library)
+        status = "fresh" if download_success else "cached"
+        logger.info(f"CallInfo initialized successfully (using {status} country file)")
+        return callinfo
+    except Exception as e:
+        logger.error(f"Failed to initialize CallInfo: {e}")
+        raise
 
 
 def log_version_info(version_data: dict) -> None:
@@ -120,6 +194,55 @@ def filter_qsos_by_date_range(
     except ValueError as e:
         logger.error(f"Date parsing error: {e}")
         raise
+
+
+def process_qsos_by_dxcc(qsos: List, callinfo: Callinfo) -> None:
+    
+    poland_qsos = []
+    germany_qsos = []
+    other_qsos = []
+    
+    for qso in qsos:
+        try:
+            fullcall = qso.get('CALL', '')
+            if not fullcall:
+                continue
+            
+            homecall = callinfo.get_homecall(fullcall)
+            adif_id = callinfo.get_adif_id(homecall)
+            
+            if adif_id == 269:
+                poland_qsos.append(qso)
+            elif adif_id == 230:
+                germany_qsos.append(qso)
+            else:
+                other_qsos.append(qso)
+        except Exception as e:
+            logger.warning(f"Could not determine DXCC for {qso.get('CALL', 'unknown')}: {e}")
+            other_qsos.append(qso)
+    
+    logger.info(f"QSOs by DXCC: Poland={len(poland_qsos)}, Germany={len(germany_qsos)}, Other={len(other_qsos)}")
+    
+    if poland_qsos:
+        process_qsos_poland(poland_qsos)
+    
+    if germany_qsos:
+        process_qsos_germany(germany_qsos)
+    
+    if other_qsos:
+        process_qsos_other(other_qsos)
+
+
+def process_qsos_poland(qsos: List) -> None:
+    logger.info(f"Processing {len(qsos)} Poland QSOs")
+
+
+def process_qsos_germany(qsos: List) -> None:
+    logger.info(f"Processing {len(qsos)} Germany QSOs")
+
+
+def process_qsos_other(qsos: List) -> None:
+    logger.info(f"Processing {len(qsos)} Other QSOs")
 
 
 def print_qso_summary(qsos: List, title: str = "QSO Summary") -> None:
@@ -220,6 +343,8 @@ Usage examples:
             sys.exit(1)
         
         try:
+            callinfo = setup_callinfo()
+            
             adif_content, qso_count = download_adif(api_client)
             qsos = parse_adif_content(adif_content)
             
@@ -229,6 +354,8 @@ Usage examples:
                 qsos = filter_qsos_by_date_range(qsos, args.from_date, args.to_date)
             
             print_qso_summary(qsos, "QSO Data Summary")
+            
+            process_qsos_by_dxcc(qsos, callinfo)
             
             logger.info(f"Ready to process {len(qsos)} QSOs")
             
