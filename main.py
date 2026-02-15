@@ -17,6 +17,8 @@ from pathlib import Path
 
 from config import load_config, validate_config, ConfigError
 from api import WavelogAPI, WavelogAPIError
+from poland import process_qsos_poland
+from germany import process_qsos_germany
 
 
 logger = logging.getLogger(__name__)
@@ -33,12 +35,20 @@ def setup_logging(verbose: bool = False) -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setLevel(level)
     handler.setFormatter(formatter)
-    
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    if root_logger.handlers:
+        for existing in root_logger.handlers:
+            existing.setLevel(level)
+            existing.setFormatter(formatter)
+    else:
+        root_logger.addHandler(handler)
+
     logger.setLevel(level)
-    logger.addHandler(handler)
 
 
-def setup_callinfo() -> Callinfo:
+def setup_callinfo() -> Tuple[Callinfo, LookupLib]:
     cache_dir = Path.home() / '.cache' / 'qslmaster'
     cache_dir.mkdir(parents=True, exist_ok=True)
     
@@ -97,7 +107,7 @@ def setup_callinfo() -> Callinfo:
         callinfo = Callinfo(lookup_library)
         status = "fresh" if download_success else "cached"
         logger.info(f"CallInfo initialized successfully (using {status} country file)")
-        return callinfo
+        return callinfo, lookup_library
     except Exception as e:
         logger.error(f"Failed to initialize CallInfo: {e}")
         raise
@@ -196,49 +206,54 @@ def filter_qsos_by_date_range(
         raise
 
 
+def get_dxcc_name(dxcc_id: int) -> str:
+    dxcc_names = {
+        269: "Poland",
+        230: "Germany",
+    }
+    try:
+        return dxcc_names.get(int(dxcc_id), str(dxcc_id))
+    except Exception:
+        return str(dxcc_id)
+
+
 def process_qsos_by_dxcc(qsos: List, callinfo: Callinfo) -> None:
-    
-    poland_qsos = []
-    germany_qsos = []
+    dxcc_handlers = {
+        269: process_qsos_poland,
+        230: process_qsos_germany,
+    }
+
+    buckets = {dxcc: [] for dxcc in dxcc_handlers}
     other_qsos = []
-    
+
     for qso in qsos:
         try:
             fullcall = qso.get('CALL', '')
             if not fullcall:
                 continue
-            
+
             homecall = callinfo.get_homecall(fullcall)
             adif_id = callinfo.get_adif_id(homecall)
-            
-            if adif_id == 269:
-                poland_qsos.append(qso)
-            elif adif_id == 230:
-                germany_qsos.append(qso)
+
+            if adif_id in buckets:
+                buckets[adif_id].append(qso)
             else:
                 other_qsos.append(qso)
         except Exception as e:
             logger.warning(f"Could not determine DXCC for {qso.get('CALL', 'unknown')}: {e}")
             other_qsos.append(qso)
-    
-    logger.info(f"QSOs by DXCC: Poland={len(poland_qsos)}, Germany={len(germany_qsos)}, Other={len(other_qsos)}")
-    
-    if poland_qsos:
-        process_qsos_poland(poland_qsos)
-    
-    if germany_qsos:
-        process_qsos_germany(germany_qsos)
-    
+
+    counts = [f"{get_dxcc_name(dxcc)}={len(items)}" for dxcc, items in buckets.items()]
+    counts.append(f"Other={len(other_qsos)}")
+    logger.info(f"QSOs by DXCC: {', '.join(counts)}")
+
+    for dxcc, handler in dxcc_handlers.items():
+        items = buckets.get(dxcc, [])
+        if items:
+            handler(items)
+
     if other_qsos:
         process_qsos_other(other_qsos)
-
-
-def process_qsos_poland(qsos: List) -> None:
-    logger.info(f"Processing {len(qsos)} Poland QSOs")
-
-
-def process_qsos_germany(qsos: List) -> None:
-    logger.info(f"Processing {len(qsos)} Germany QSOs")
 
 
 def process_qsos_other(qsos: List) -> None:
@@ -343,7 +358,7 @@ Usage examples:
             sys.exit(1)
         
         try:
-            callinfo = setup_callinfo()
+            callinfo, lookup_library = setup_callinfo()
             
             adif_content, qso_count = download_adif(api_client)
             qsos = parse_adif_content(adif_content)
@@ -356,8 +371,6 @@ Usage examples:
             print_qso_summary(qsos, "QSO Data Summary")
             
             process_qsos_by_dxcc(qsos, callinfo)
-            
-            logger.info(f"Ready to process {len(qsos)} QSOs")
             
         except (WavelogAPIError, ValueError) as e:
             logger.error(f"Error processing ADIF data: {e}")
