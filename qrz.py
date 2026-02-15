@@ -1,5 +1,7 @@
 import requests
 import xml.etree.ElementTree as ET
+import logging
+import time
 from typing import Dict, Any, Optional
 
 
@@ -18,6 +20,7 @@ class QRZAPI:
         self.session.headers.update({
             'User-Agent': 'QSLMaster/1.0'
         })
+        self.logger = logging.getLogger(__name__)
     
     def _get_session_key(self) -> str:
         try:
@@ -47,12 +50,17 @@ class QRZAPI:
     def lookup_call(self, callsign: str) -> Dict[str, Any]:
         self._ensure_session()
         try:
+            t_http_start = time.perf_counter()
             response = self.session.get(
                 self.base_url,
                 params={'s': self.session_key, 'callsign': callsign},
                 timeout=10
             )
             response.raise_for_status()
+            t_http_end = time.perf_counter()
+            http_time = (t_http_end - t_http_start) * 1000
+            
+            t_parse_start = time.perf_counter()
             root = ET.fromstring(response.content)
             
             ns = {'qrz': 'http://xmldata.qrz.com'}
@@ -69,6 +77,12 @@ class QRZAPI:
                 tag = tag.lower()
                 text = child.text or ''
                 data[tag] = text
+            
+            t_parse_end = time.perf_counter()
+            parse_time = (t_parse_end - t_parse_start) * 1000
+            total_time = http_time + parse_time
+            
+            self.logger.debug(f"QRZ lookup {callsign}: total={total_time:.1f}ms (HTTP={http_time:.1f}ms, parse={parse_time:.1f}ms)")
             
             return data
         except requests.exceptions.RequestException as e:

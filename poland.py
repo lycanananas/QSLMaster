@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List, Dict, Optional, Tuple
 
 import requests
@@ -32,14 +33,26 @@ def _fetch_pzk_member_info(homecall: str) -> Optional[Tuple[str, str]]:
         "ec_view_members_action": "view_selected_members",
         "Submit": "Poka%BF",
     }
+    t_start = time.perf_counter()
     response = requests.post(
         "https://pzk.org.pl/osec_ec_members_view.php",
         data=post_data,
         timeout=20,
     )
+    t_http = time.perf_counter()
+    http_time = (t_http - t_start) * 1000
+    
     if response.status_code != 200:
         return None
-    return _parse_pzk_response(response.content)
+    
+    result = _parse_pzk_response(response.content)
+    t_end = time.perf_counter()
+    parse_time = (t_end - t_http) * 1000
+    total_time = (t_end - t_start) * 1000
+    
+    logger.debug(f"PZK lookup {homecall}: total={total_time:.1f}ms (HTTP={http_time:.1f}ms, parse={parse_time:.1f}ms)")
+    
+    return result
 
 
 def process_qsos_poland(qsos: List) -> List[Dict[str, object]]:
