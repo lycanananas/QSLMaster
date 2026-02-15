@@ -5,7 +5,10 @@ Download QSO from Wavelog platform for QSL card label preparation.
 ## Requirements
 
 - Python 3.7+
-- requests
+- requests >= 2.28.0
+- adif-io >= 0.2.5
+- pyhamtools >= 0.12.0
+- reportlab >= 4.0.0
 
 ## Installation
 
@@ -159,4 +162,20 @@ QSLMaster/
 
 ## License
 
-GPLv3
+QSLMaster is distributed under the **GNU General Public License v3.0**.
+
+This means you are free to use, modify, and distribute this software, but you must:
+- Include the license and copyright notice
+- Document any changes you make
+- Disclose the source code when you distribute it
+- Use the same license for any derivative works
+
+For details, see [LICENSE.md](LICENSE.md) or visit https://www.gnu.org/licenses/gpl-3.0.en.html
+
+## Contributing
+
+Contributions are welcome! Feel free to submit issues and pull requests.
+
+## Support
+
+For issues, questions, or feature requests, please open an issue on the project repository.
