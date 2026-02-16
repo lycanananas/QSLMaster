@@ -42,6 +42,8 @@ LOGO_WIDTH = 15 * mm
 LOGO_HEIGHT = 15 * mm
 LOGO_RIGHT_MARGIN = 2 * mm
 LOGO_TOP_MARGIN = 2 * mm
+CONFIRMATION_OFFSET = 3 * mm
+CONFIRMATION_FONT_SIZE = 6
 
 
 def format_date(date_str: str) -> str:
@@ -142,22 +144,25 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
         band_x = x_start + c.stringWidth("Band: ", "Helvetica-Bold", DATA_FONT_SIZE)
         c.drawString(band_x, current_y, band)
     
+    logo_x = x + width - LABEL_PADDING - LOGO_WIDTH - LOGO_RIGHT_MARGIN
+    logo_y = y - LABEL_PADDING - 1 * mm - LOGO_HEIGHT
+    
     logo_path = Path(__file__).parent / LOGO_IMAGE_PATH
     if logo_path.exists():
         try:
             img = ImageReader(str(logo_path))
-            logo_x = x + width - LABEL_PADDING - LOGO_WIDTH - LOGO_RIGHT_MARGIN
-            logo_y = y - LABEL_PADDING - LOGO_TOP_MARGIN - LOGO_HEIGHT
             c.drawImage(img, logo_x, logo_y, width=LOGO_WIDTH, height=LOGO_HEIGHT, mask='auto')
         except Exception as e:
             logger.warning(f"Failed to load logo image: {e}")
     
-        c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
-        c.drawString(x_start, current_y, "Band:")
-        c.setFont("Helvetica", DATA_FONT_SIZE)
-        band_x = x_start + c.stringWidth("Band: ", "Helvetica-Bold", DATA_FONT_SIZE)
-        c.drawString(band_x, current_y, band)
-    
+    logo_center_x = logo_x + LOGO_WIDTH / 2
+    confirmation_x = logo_center_x
+    confirmation_y = logo_y - CONFIRMATION_OFFSET - 3 * mm
+    c.setFont("Helvetica-Bold", CONFIRMATION_FONT_SIZE)
+    c.setFillColor(colors.black)
+    c.drawCentredString(confirmation_x, confirmation_y + CONFIRMATION_FONT_SIZE, "Confirming")
+    c.drawCentredString(confirmation_x, confirmation_y, "2-way QSO")
+
     if debug_mode:
         c.setStrokeColor(colors.red)
         c.setLineWidth(LINE_WIDTH)
