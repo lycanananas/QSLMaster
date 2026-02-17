@@ -26,6 +26,7 @@ class ProcessingTab(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
 
+
         date_group = QGroupBox("Date Range (Optional)")
         date_layout = QHBoxLayout()
 

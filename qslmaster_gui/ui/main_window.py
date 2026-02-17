@@ -5,7 +5,8 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QComboBox
 )
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QPixmap
 
 from qslmaster_gui.dialogs import ConfigDialog
 from qslmaster_gui.widgets import ProcessingTab
@@ -39,16 +40,28 @@ class QSLMasterMainWindow(QMainWindow):
 
         top_layout = QHBoxLayout()
 
-        top_layout.addWidget(QLabel("Configuration:"))
+        config_block = QVBoxLayout()
+        config_block.addWidget(QLabel("Configuration:"))
+
+        config_row = QHBoxLayout()
         self.config_combo = QComboBox()
+        self.config_combo.setMinimumWidth(320)
         self.config_combo.currentIndexChanged.connect(self.on_config_changed)
-        top_layout.addWidget(self.config_combo)
+        config_row.addWidget(self.config_combo)
 
         settings_btn = QPushButton("Edit Settings")
         settings_btn.clicked.connect(self.open_settings)
-        top_layout.addWidget(settings_btn)
+        config_row.addWidget(settings_btn)
+
+        config_block.addLayout(config_row)
+        top_layout.addLayout(config_block)
 
         top_layout.addStretch()
+        logo_label = QLabel()
+        logo_pixmap = QPixmap(str(icon_path))
+        if not logo_pixmap.isNull():
+            logo_label.setPixmap(logo_pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        top_layout.addWidget(logo_label)
         layout.addLayout(top_layout)
 
         self.processing_tab = ProcessingTab()
