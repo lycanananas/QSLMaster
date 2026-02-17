@@ -149,31 +149,6 @@ rm -rf ~/.cache/qslmaster/
 - Wavelog API: https://github.com/wavelog/wavelog/wiki/API
 - QRZ.com XML API: https://www.qrz.com/page/api
 
-## Project Structure
-
-```
-QSLMaster/
-├── qslmaster_cli/
-│   ├── main.py
-│   ├── config.py
-│   ├── qslmaster_core.py
-│   ├── wavelog.py
-│   ├── qrz.py
-│   ├── poland.py
-│   ├── other.py
-│   ├── pdf_labels.py
-│   └── validate_adif.py
-├── qslmaster_gui/
-│   ├── main.py
-│   ├── ui/
-│   ├── dialogs/
-│   ├── workers/
-│   └── utils/
-├── config.example.json
-├── requirements.txt
-├── requirements-gui.txt
-└── README.md
-```
 
 ## License
 

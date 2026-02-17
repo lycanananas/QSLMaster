@@ -48,3 +48,6 @@ wheels/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# AUR
+.SRCINFO
