@@ -51,3 +51,8 @@ Thumbs.db
 
 # AUR
 .SRCINFO
+src/
+pkg/
+qslmaster/
+*.pkg.tar.*
+*.pkg.tar.*.sig

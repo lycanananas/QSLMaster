@@ -1,25 +1,31 @@
 pkgname=qslmaster-git
-pkgver=1.0.c5a9027.c5a9027.c5a9027
+pkgver=1.0.2477a94
+pkgver_base=1.0
 pkgrel=1
 pkgdesc="Download QSO data from Wavelog and prepare ADIF output and printable QSL labels"
 arch=('any')
 url="https://gitlab.com/adrian.grzeca/qslmaster"
 license=('GPL3')
-depends=('python' 'python-pip')
-makedepends=('git')
+depends=(
+  'python'
+  'python-requests'
+  'python-adif-io'
+  'python-reportlab'
+  'python-pyqt6'
+  'python-keyring'
+  'python-lxml'
+)
+makedepends=('python-pip')
 provides=('qslmaster')
 conflicts=('qslmaster')
-source=("git+https://gitlab.com/adrian.grzeca/qslmaster.git")
-sha256sums=('SKIP')
 
 pkgver() {
-  cd "$srcdir/qslmaster"
-  base_version=$pkgver
-  printf "%s.%s" "$base_version" "$(git rev-parse --short HEAD)"
+  cd "$startdir"
+  printf "%s.%s" "$pkgver_base" "$(git rev-parse --short HEAD)"
 }
 
 package() {
-  cd "$srcdir/qslmaster"
+  cd "$startdir"
   install -d "$pkgdir/usr/lib/qslmaster"
 
   pkg_dirs=(
@@ -44,11 +50,8 @@ package() {
     install -m644 qslmaster_gui/resources/*.png "$pkgdir/usr/lib/qslmaster/qslmaster_gui/resources/"
   fi
 
-  python3 -m venv "$pkgdir/usr/lib/qslmaster/venv"
-  "$pkgdir/usr/lib/qslmaster/venv/bin/pip" install --no-cache-dir -r "$srcdir/qslmaster/requirements.txt"
-  if [[ -f "$srcdir/qslmaster/requirements-gui.txt" ]]; then
-    "$pkgdir/usr/lib/qslmaster/venv/bin/pip" install --no-cache-dir -r "$srcdir/qslmaster/requirements-gui.txt"
-  fi
+  install -d "$pkgdir/usr/lib/qslmaster/vendor"
+  python3 -m pip install --no-cache-dir --no-deps --target "$pkgdir/usr/lib/qslmaster/vendor" pyhamtools==0.12.0
 
   install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 packaging/qslmaster.desktop "$pkgdir/usr/share/applications/qslmaster.desktop"
