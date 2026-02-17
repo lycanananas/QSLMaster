@@ -9,7 +9,7 @@ Download QSO data from Wavelog and prepare ADIF output and printable QSL labels.
 - Date range filtering
 - QSL bureau verification via QRZ.com (optional)
 - Country specific processing for Poland (PZK lookup)
-- PDF label generation
+- PDF label generation (Avery 70x25.4mm A4, 33 labels per sheet)
 - Background processing and live progress in GUI
 
 ## Requirements
@@ -63,10 +63,10 @@ cp config.example.json config.json
 ```
 
 2. Edit config.json and fill in:
-   - api_key: Your API key from Wavelog
-   - wavelog_url: URL of your Wavelog instance
-   - qrz_username: Your QRZ.com username (optional)
-   - qrz_password: Your QRZ.com password (optional)
+   - `api_key` - Your API key from Wavelog
+   - `wavelog_url` - URL of your Wavelog instance
+   - `qrz_username` - Your QRZ.com username (optional)
+   - `qrz_password` - Your QRZ.com password (optional)
 
 Example config.json:
 ```json
@@ -131,6 +131,15 @@ After generating the ADIF file, validate its integrity:
 ```bash
 python qslmaster_cli/validate_adif.py qsl.adi
 ```
+
+## Testing
+
+Unit tests for callsign extraction:
+```bash
+python -m qslmaster_cli.callsign_utils
+```
+
+This runs basic tests for the `extract_homecall()` function which handles various callsign formats including slashed callsigns (e.g., `DL/SQ5FOX/M/DL` → `SQ5FOX`).
 
 ## Building
 

@@ -4,6 +4,8 @@ import logging
 import time
 from typing import Dict, Any, Optional
 
+from .callsign_utils import extract_homecall
+
 
 class QRZAPIError(Exception):
     pass
@@ -48,6 +50,7 @@ class QRZAPI:
             self.session_key = self._get_session_key()
     
     def lookup_call(self, callsign: str) -> Dict[str, Any]:
+        callsign = extract_homecall(callsign)
         self._ensure_session()
         try:
             t_http_start = time.perf_counter()

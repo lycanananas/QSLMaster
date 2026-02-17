@@ -291,7 +291,7 @@ class QSLProcessor:
             
             verified_other, total_other = process_qsos_other(other_qsos, self.qrz_api, log_callback=self._log, progress_callback=make_callback(progress_counter))
             if verified_other:
-                handler_results['other'] = (verified_other, total_other)
+                handler_results['Other'] = (verified_other, total_other)
 
         return handler_results
     

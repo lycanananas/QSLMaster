@@ -19,7 +19,7 @@ AVERY_70X25 = {
     'columns': 3,
     'rows': 11,
     'left_margin': 0,
-    'top_margin': 4.5,
+    'top_margin': 9,
     'column_gap': 0,
     'row_gap': 0,
 }
@@ -42,7 +42,7 @@ LOGO_WIDTH = 15 * mm
 LOGO_HEIGHT = 15 * mm
 LOGO_RIGHT_MARGIN = 2 * mm
 LOGO_TOP_MARGIN = 2 * mm
-CONFIRMATION_OFFSET = 3 * mm
+CONFIRMATION_OFFSET = 1.5 * mm
 CONFIRMATION_FONT_SIZE = 6
 
 

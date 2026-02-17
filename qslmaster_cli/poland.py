@@ -4,7 +4,8 @@ from typing import List, Dict, Optional, Tuple, Callable
 from collections import defaultdict
 
 import requests
-from pyhamtools.callinfo import Callinfo
+
+from .callsign_utils import extract_homecall
 
 try:
     from lxml import html as lxml_html
@@ -91,10 +92,7 @@ def process_qsos_poland(qsos: List, log_callback: Optional[Callable[[str, str], 
         t_call_start = time.perf_counter()
         try:
             if fullcall not in pzk_cache:
-                try:
-                    homecall = Callinfo.get_homecall(fullcall)
-                except Exception:
-                    homecall = fullcall
+                homecall = extract_homecall(fullcall)
                 
                 t_api_start = time.perf_counter()
                 info = _fetch_pzk_member_info(homecall)
