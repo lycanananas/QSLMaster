@@ -1,6 +1,6 @@
 # QSLMaster
 
-![QSLMaster Logo](logo.png)
+![QSLMaster Logo](./logo.png)
 
 Download QSO data from Wavelog and prepare ADIF output and printable QSL labels. The project includes both a CLI and a GUI, sharing the same processing core.
 
