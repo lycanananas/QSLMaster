@@ -3,7 +3,7 @@ import time
 from typing import List, Optional, Tuple, Dict
 from collections import defaultdict
 
-from qrz import QRZAPI, QRZAPIError
+from .qrz import QRZAPI, QRZAPIError
 
 
 logger = logging.getLogger(__name__)
