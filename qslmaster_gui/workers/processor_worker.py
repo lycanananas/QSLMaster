@@ -17,6 +17,7 @@ class ProcessorWorker(QRunnable):
         config: dict,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
+        modes: Optional[str] = None,
         output_adif: Optional[str] = None,
         generate_pdf: Optional[str] = None,
         debug_labels: bool = False,
@@ -25,6 +26,7 @@ class ProcessorWorker(QRunnable):
         self.config = config
         self.from_date = from_date
         self.to_date = to_date
+        self.modes = modes
         self.output_adif = output_adif
         self.generate_pdf = generate_pdf
         self.debug_labels = debug_labels
@@ -50,6 +52,7 @@ class ProcessorWorker(QRunnable):
             result = processor.process(
                 from_date=self.from_date,
                 to_date=self.to_date,
+                modes=self.modes,
                 output_adif=self.output_adif,
                 generate_pdf=self.generate_pdf,
                 debug_labels=self.debug_labels,

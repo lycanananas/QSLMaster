@@ -223,6 +223,43 @@ class QSLProcessor:
         except ValueError as e:
             raise QSLProcessorError(f"Date parsing error: {e}")
     
+    def filter_qsos_by_mode(self, qsos: List, modes: Optional[str] = None) -> List:
+        if not modes:
+            return qsos
+        
+        try:
+            mode_list = [m.strip().upper() for m in modes.split(',')]
+            
+            digi_modes = ['RTTY', 'PSK', 'MFSK', 'OLIVIA', 'HELLSCHREIBER']
+            filtered = []
+            
+            for qso in qsos:
+                mode = qso.get('MODE', '').upper()
+                submode = qso.get('SUBMODE', '').upper()
+                
+                matched = False
+                for requested_mode in mode_list:
+                    if requested_mode == 'DIGI':
+                        if mode in digi_modes or any(d in submode for d in digi_modes):
+                            matched = True
+                            break
+                    elif requested_mode == 'SSB':
+                        if mode == 'SSB' or submode in ['SSB', 'USB', 'LSB']:
+                            matched = True
+                            break
+                    else:
+                        if mode == requested_mode or submode == requested_mode:
+                            matched = True
+                            break
+                
+                if matched:
+                    filtered.append(qso)
+            
+            self._log('INFO', f"Filtered to {len(filtered)} QSOs by mode: {', '.join(mode_list)}")
+            return filtered
+        except Exception as e:
+            raise QSLProcessorError(f"Mode filtering error: {e}")
+    
     @staticmethod
     def get_dxcc_name(dxcc_id: int) -> str:
         dxcc_names = {
@@ -331,6 +368,7 @@ class QSLProcessor:
         self,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
+        modes: Optional[str] = None,
         output_adif: Optional[str] = None,
         generate_pdf: Optional[str] = None,
         debug_labels: bool = False,
@@ -365,6 +403,11 @@ class QSLProcessor:
             if from_date or to_date:
                 self._progress("Filtering QSOs by date...")
                 qsos = self.filter_qsos_by_date_range(qsos, from_date, to_date)
+                self._progress(f"Filtered to {len(qsos)} QSOs")
+            
+            if modes:
+                self._progress("Filtering QSOs by mode...")
+                qsos = self.filter_qsos_by_mode(qsos, modes)
                 self._progress(f"Filtered to {len(qsos)} QSOs")
             
             self.print_qso_summary(qsos)

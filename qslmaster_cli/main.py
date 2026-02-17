@@ -59,6 +59,13 @@ Usage examples:
     )
     
     parser.add_argument(
+        '--modes',
+        type=str,
+        default=None,
+        help='Filter QSOs by mode (comma-separated: CW,SSB,AM,FM,FT8,DIGI)'
+    )
+    
+    parser.add_argument(
         '-o', '--output-adif',
         type=str,
         required=True,
@@ -103,6 +110,7 @@ Usage examples:
         result = processor.process(
             from_date=args.from_date,
             to_date=args.to_date,
+            modes=args.modes,
             output_adif=args.output_adif,
             generate_pdf=args.generate_pdf,
             debug_labels=args.debug_labels,

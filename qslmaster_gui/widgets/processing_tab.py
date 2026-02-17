@@ -50,6 +50,29 @@ class ProcessingTab(QWidget):
         date_group.setLayout(date_layout)
         layout.addWidget(date_group)
 
+        mode_group = QGroupBox("Mode Filter (Optional)")
+        mode_layout = QHBoxLayout()
+        
+        self.mode_all_checkbox = QCheckBox("ALL")
+        self.mode_all_checkbox.setChecked(True)
+        self.mode_all_checkbox.stateChanged.connect(self.on_mode_all_toggled)
+        mode_layout.addWidget(self.mode_all_checkbox)
+        
+        mode_layout.addSpacing(20)
+        
+        self.mode_checkboxes = {}
+        for mode in ['CW', 'SSB', 'AM', 'FM', 'FT8', 'DIGI']:
+            checkbox = QCheckBox(mode)
+            checkbox.setChecked(True)
+            checkbox.setEnabled(False)
+            checkbox.stateChanged.connect(self.on_individual_mode_toggled)
+            self.mode_checkboxes[mode] = checkbox
+            mode_layout.addWidget(checkbox)
+        
+        mode_layout.addStretch()
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+
         output_group = QGroupBox("Output Options")
         output_layout = QVBoxLayout()
 
@@ -135,6 +158,35 @@ class ProcessingTab(QWidget):
         for handler in root_logger.handlers:
             handler.setLevel(level)
     
+    def on_mode_all_toggled(self):
+        checked = self.mode_all_checkbox.isChecked()
+        for checkbox in self.mode_checkboxes.values():
+            checkbox.blockSignals(True)
+            checkbox.setEnabled(not checked)
+            if checked:
+                checkbox.setChecked(False)
+            else:
+                checkbox.setChecked(True)
+            checkbox.blockSignals(False)
+    
+    def on_individual_mode_toggled(self):
+        all_checked = all(cb.isChecked() for cb in self.mode_checkboxes.values())
+        any_unchecked = any(not cb.isChecked() for cb in self.mode_checkboxes.values())
+        
+        self.mode_all_checkbox.blockSignals(True)
+        if all_checked:
+            self.mode_all_checkbox.setChecked(True)
+        elif any_unchecked:
+            self.mode_all_checkbox.setChecked(False)
+        self.mode_all_checkbox.blockSignals(False)
+    
+    def get_selected_modes(self) -> str:
+        if self.mode_all_checkbox.isChecked():
+            return None
+        
+        selected = [mode for mode, cb in self.mode_checkboxes.items() if cb.isChecked()]
+        return ','.join(selected) if selected else None
+    
     def _check_file_overwrite(self, adif_path: str, pdf_path: str) -> bool:
         files_to_check = []
         
@@ -208,6 +260,8 @@ class ProcessingTab(QWidget):
             from_date = self.from_date_input.date().toPyDate().strftime('%Y-%m-%d')
             to_date = self.to_date_input.date().toPyDate().strftime('%Y-%m-%d')
 
+        modes = self.get_selected_modes()
+
         output_adif = self.output_adif_input.text()
         output_pdf = self.output_pdf_input.text() if self.generate_pdf.isChecked() else None
         
@@ -218,6 +272,7 @@ class ProcessingTab(QWidget):
             config_to_use,
             from_date=from_date,
             to_date=to_date,
+            modes=modes,
             output_adif=output_adif,
             generate_pdf=output_pdf,
             debug_labels=self.debug_labels.isChecked(),
