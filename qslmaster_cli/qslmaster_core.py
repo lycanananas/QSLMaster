@@ -1,6 +1,3 @@
-"""
-QSLMaster Core Logic - reusable processor for CLI and GUI
-"""
 import logging
 import sys
 import json
@@ -26,13 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 class QSLProcessorError(Exception):
-    """Custom exception for QSL processing errors"""
     pass
 
 
 class QSLProcessor:
-    """Main processor class for QSO processing and QSL generation"""
-    
     def __init__(
         self,
         config: Dict[str, Any],
@@ -40,15 +34,6 @@ class QSLProcessor:
         log_callback: Optional[Callable[[str, str], None]] = None,
         progress_value_callback: Optional[Callable[[int, int], None]] = None,
     ):
-        """
-        Initialize QSL Processor
-        
-        Args:
-            config: Configuration dictionary
-            progress_callback: Callable(message) for progress updates
-            log_callback: Callable(level, message) for logging
-            progress_value_callback: Callable(current, total) for progress percentage
-        """
         self.config = config
         self.progress_callback = progress_callback or self._default_callback
         self.log_callback = log_callback or self._default_log_callback
@@ -60,11 +45,9 @@ class QSLProcessor:
         self.lookup_library = None
     
     def _default_callback(self, message: str) -> None:
-        """Default progress callback - logs to logger"""
         logger.info(message)
     
     def _default_log_callback(self, level: str, message: str) -> None:
-        """Default log callback"""
         level_map = {
             'INFO': logging.INFO,
             'DEBUG': logging.DEBUG,
@@ -74,21 +57,17 @@ class QSLProcessor:
         logger.log(level_map.get(level, logging.INFO), message)
     
     def _default_progress_value_callback(self, current: int, total: int) -> None:
-        """Default progress value callback"""
         pass
     
     def _progress(self, message: str, current: Optional[int] = None, total: Optional[int] = None) -> None:
-        """Emit progress message"""
         self.progress_callback(message)
         if current is not None and total is not None:
             self.progress_value_callback(current, total)
     
     def _log(self, level: str, message: str) -> None:
-        """Emit log message"""
         self.log_callback(level, message)
     
     def setup_callinfo(self) -> None:
-        """Initialize CallInfo and download country data"""
         self._progress("Initializing CallInfo...")
         
         cache_dir = Path.home() / '.cache' / 'qslmaster'
@@ -151,7 +130,6 @@ class QSLProcessor:
             raise QSLProcessorError(f"Failed to initialize CallInfo: {e}")
     
     def check_api_health(self) -> bool:
-        """Check Wavelog API availability"""
         try:
             self._progress("Checking Wavelog API availability...")
             version_data = self.api_client.get_version()
@@ -175,7 +153,6 @@ class QSLProcessor:
             return False
     
     def download_adif(self) -> Tuple[str, int]:
-        """Download ADIF content from all Wavelog stations"""
         try:
             self._progress("Downloading contacts in ADIF format from all stations...")
             adif_content, qso_count = self.api_client.get_contacts_adif()
@@ -185,7 +162,6 @@ class QSLProcessor:
             raise QSLProcessorError(f"API error while downloading ADIF: {e}")
     
     def parse_adif_content(self, adif_content: str) -> List:
-        """Parse ADIF content"""
         try:
             qsos, headers = adif_io.read_from_string(adif_content)
             self._log('INFO', f"Parsed {len(qsos)} QSO records from ADIF")
@@ -195,7 +171,6 @@ class QSLProcessor:
     
     @staticmethod
     def parse_date_arg(date_str: str) -> Optional[datetime]:
-        """Parse date string in YYYY-MM-DD format"""
         if not date_str:
             return None
         try:
@@ -209,7 +184,6 @@ class QSLProcessor:
         from_date: Optional[str] = None,
         to_date: Optional[str] = None
     ) -> List:
-        """Filter QSOs by date range"""
         try:
             from_datetime = self.parse_date_arg(from_date) if from_date else None
             to_datetime = self.parse_date_arg(to_date) if to_date else None
@@ -251,7 +225,6 @@ class QSLProcessor:
     
     @staticmethod
     def get_dxcc_name(dxcc_id: int) -> str:
-        """Get DXCC country name"""
         dxcc_names = {
             269: "Poland",
         }
@@ -261,7 +234,6 @@ class QSLProcessor:
             return str(dxcc_id)
     
     def process_qsos_by_dxcc(self, qsos: List) -> Dict[int, Any]:
-        """Process QSOs by DXCC (country) code"""
         dxcc_handlers = {
             269: process_qsos_poland,
         }
@@ -324,7 +296,6 @@ class QSLProcessor:
         return handler_results
     
     def print_qso_summary(self, qsos: List) -> None:
-        """Print summary of QSO data"""
         if not qsos:
             self._log('INFO', "QSO Summary: No QSOs")
             return
@@ -365,18 +336,6 @@ class QSLProcessor:
         debug_labels: bool = False,
         preview_pdf: bool = False,
     ) -> Dict[str, Any]:
-        """
-        Main processing method
-        
-        Returns:
-            {
-                'success': bool,
-                'qsl_qsos': List,
-                'output_adif': str (path),
-                'output_pdf': str (path) or None,
-                'stats': {...}
-            }
-        """
         try:
             self._progress("Starting QSL processing...")
             self.api_client = WavelogAPI(
