@@ -410,11 +410,11 @@ class QSLProcessor:
             if generate_pdf:
                 try:
                     if preview_pdf:
-                        preview_label_data(all_qsl_qsos, limit=3, log_callback=self._log)
+                        preview_label_data(all_qsl_qsos, limit=3)
                     
                     self._progress(f"Generating PDF labels to {generate_pdf}...")
                     logo_path = self.config.get('logo_path', 'logo.png')
-                    generate_pdf_labels(all_qsl_qsos, generate_pdf, debug_labels, logo_path, log_callback=self._log)
+                    generate_pdf_labels(all_qsl_qsos, generate_pdf, debug_labels, logo_path)
                     output_pdf_path = generate_pdf
                     self._progress(f"PDF labels generated: {generate_pdf}")
                     self._log('INFO', f"PDF labels generated: {generate_pdf}")

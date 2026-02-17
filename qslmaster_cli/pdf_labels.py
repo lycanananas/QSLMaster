@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict
 from datetime import datetime
 from pathlib import Path
 from reportlab.lib.pagesizes import A4
@@ -8,6 +8,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
+
+from .logging_handler import LogHandler
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,7 @@ def format_time(time_str: str) -> str:
         return time_str
 
 
-def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False, logo_path: str = "logo.png", log_callback: Optional[Callable[[str, str], None]] = None):
+def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False, logo_path: str = "logo.png"):
     callsign = qso.get('CALL', 'N/A')
     via = qso.get('QSL_VIA', '').strip()
     date = format_date(qso.get('QSO_DATE', ''))
@@ -156,10 +158,7 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
             img = ImageReader(str(resolved_logo_path))
             c.drawImage(img, logo_x, logo_y, width=LOGO_WIDTH, height=LOGO_HEIGHT, mask='auto')
         except Exception as e:
-            if log_callback:
-                log_callback('WARNING', f"Failed to load logo image: {e}")
-            else:
-                logger.warning(f"Failed to load logo image: {e}")
+            LogHandler.get_instance().log('WARNING', f"Failed to load logo image: {e}")
     
     logo_center_x = logo_x + LOGO_WIDTH / 2
     confirmation_x = logo_center_x
@@ -175,18 +174,12 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
         c.rect(x, y - height, width, height)
 
 
-def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = False, logo_path: str = "logo.png", log_callback: Optional[Callable[[str, str], None]] = None):
-    def log(level: str, msg: str) -> None:
-        if log_callback:
-            log_callback(level, msg)
-        else:
-            getattr(logger, level.lower(), logger.info)(msg)
-    
+def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = False, logo_path: str = "logo.png"):
     if not qsos:
-        log('WARNING', "No QSOs to generate labels for")
+        LogHandler.get_instance().log('WARNING', "No QSOs to generate labels for")
         return
     
-    log('INFO', f"Generating PDF labels for {len(qsos)} QSOs")
+    LogHandler.get_instance().log('INFO', f"Generating PDF labels for {len(qsos)} QSOs")
     
     specs = AVERY_70X25
     
@@ -206,7 +199,7 @@ def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = F
     labels_per_page = specs['columns'] * specs['rows']
     total_pages = (len(qsos) + labels_per_page - 1) // labels_per_page
     
-    log('INFO', f"Creating {total_pages} page(s) with {labels_per_page} labels per page")
+    LogHandler.get_instance().log('INFO', f"Creating {total_pages} page(s) with {labels_per_page} labels per page")
     
     qso_index = 0
     
@@ -219,7 +212,7 @@ def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = F
                 x = left_margin + col * (label_width + column_gap)
                 y = page_height - top_margin - row * (label_height + row_gap)
                 
-                draw_label(c, qsos[qso_index], x, y, label_width, label_height, debug_mode, logo_path, log_callback=log_callback)
+                draw_label(c, qsos[qso_index], x, y, label_width, label_height, debug_mode, logo_path)
                 
                 qso_index += 1
             
@@ -230,17 +223,11 @@ def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = F
             c.showPage()
     
     c.save()
-    log('INFO', f"PDF labels saved to: {output_path}")
+    LogHandler.get_instance().log('INFO', f"PDF labels saved to: {output_path}")
 
 
-def preview_label_data(qsos: List[Dict], limit: int = 3, log_callback: Optional[Callable[[str, str], None]] = None):
-    def log(level: str, msg: str) -> None:
-        if log_callback:
-            log_callback(level, msg)
-        else:
-            getattr(logger, level.lower(), logger.info)(msg)
-    
-    log('INFO', f"Preview of first {min(limit, len(qsos))} labels:")
+def preview_label_data(qsos: List[Dict], limit: int = 3):
+    LogHandler.get_instance().log('INFO', f"Preview of first {min(limit, len(qsos))} labels:")
     
     for i, qso in enumerate(qsos[:limit]):
         callsign = qso.get('CALL', 'N/A')
@@ -251,9 +238,9 @@ def preview_label_data(qsos: List[Dict], limit: int = 3, log_callback: Optional[
         mode = qso.get('SUBMODE') or qso.get('MODE', '')
         band = qso.get('BAND', '')
         
-        log('INFO', f"\n  Label {i+1}:")
-        log('INFO', f"    To Radio: {callsign}")
+        LogHandler.get_instance().log('INFO', f"\n  Label {i+1}:")
+        LogHandler.get_instance().log('INFO', f"    To Radio: {callsign}")
         if via:
-            log('INFO', f"    Via: {via}")
-        log('INFO', f"    Date: {date}, Time: {time}")
-        log('INFO', f"    RST: {rst}, Mode: {mode}, Band: {band}")
+            LogHandler.get_instance().log('INFO', f"    Via: {via}")
+        LogHandler.get_instance().log('INFO', f"    Date: {date}, Time: {time}")
+        LogHandler.get_instance().log('INFO', f"    RST: {rst}, Mode: {mode}, Band: {band}")

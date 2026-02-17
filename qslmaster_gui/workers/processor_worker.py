@@ -3,6 +3,7 @@ from typing import Optional
 from PyQt6.QtCore import QRunnable
 
 from qslmaster_cli.qslmaster_core import QSLProcessor
+from qslmaster_cli.logging_handler import LogHandler
 from .signals import ProcessorSignals
 
 
@@ -35,6 +36,8 @@ class ProcessorWorker(QRunnable):
         if self.should_stop:
             self.signals.error.emit("Processing cancelled")
             return
+        
+        LogHandler.set_callback(lambda lvl, msg: self.signals.log.emit(lvl, msg))
             
         try:
             processor = QSLProcessor(
