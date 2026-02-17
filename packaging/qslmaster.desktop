@@ -7,5 +7,5 @@ TryExec=qslmaster
 Icon=qslmaster
 Terminal=false
 Categories=Utility;
-StartupWMClass=QSLMaster
+StartupWMClass=qslmaster
 Keywords=QSL;Ham;Radio;Wavelog;

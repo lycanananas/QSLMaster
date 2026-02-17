@@ -21,18 +21,17 @@ logger = logging.getLogger(__name__)
 class QSLMasterMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.setObjectName("qslmaster")
+        self.setWindowTitle("QSLMaster")
+        
+        system_icon_path = Path('/usr/share/pixmaps/qslmaster.png')
+        self.icon_path = system_icon_path if system_icon_path.exists() else Path(__file__).parent.parent / 'resources' / 'icon.png'
+        
         self.config = None
         self.init_ui()
         self.load_config()
 
     def init_ui(self):
-        self.setWindowTitle("QSLMaster")
-        self.setObjectName("QSLMaster")
-        
-        self.icon_path = Path(__file__).parent.parent / 'resources' / 'icon.png'
-        if self.icon_path.exists():
-            self.setWindowIcon(QIcon(str(self.icon_path)))
-        
         self.setGeometry(100, 100, 900, 700)
 
         central_widget = QWidget()

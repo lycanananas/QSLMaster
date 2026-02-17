@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QIcon
 
 from .ui.main_window import QSLMasterMainWindow
 
@@ -30,9 +31,11 @@ def main():
     setup_logging()
     
     app = QApplication(sys.argv)
-    app.setApplicationName("QSLMaster")
+    app.setApplicationName("qslmaster")
+    app.setApplicationDisplayName("QSLMaster")
     app.setApplicationVersion("1.0.0")
-    
+    app.setDesktopFileName("qslmaster")
+
     window = QSLMasterMainWindow()
     window.show()
     
