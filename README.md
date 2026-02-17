@@ -1,5 +1,7 @@
 # QSLMaster
 
+![QSLMaster Logo](logo.png)
+
 Download QSO data from Wavelog and prepare ADIF output and printable QSL labels. The project includes both a CLI and a GUI, sharing the same processing core.
 
 ## Features
@@ -117,13 +119,27 @@ python qslmaster_cli/main.py --config config.json --from-date 2024-01-01 --to-da
 
 Generate PDF labels:
 ```bash
-python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
+python qslmaster_cgotosli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
 ```
 
 Help:
 ```bash
 python qslmaster_cli/main.py --help
 ```
+
+## Photos
+
+### Application Interface
+
+![QSLMaster GUI Screenshot](docs/screenshot.png)
+
+### QSL Card Example
+
+![QSL Card](docs/qsl_card.png)
+
+### Generated PDF Labels
+
+![PDF Labels](docs/pdf_labels.png)
 
 ## Validating ADIF Output
 
