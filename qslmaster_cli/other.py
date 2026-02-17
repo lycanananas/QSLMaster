@@ -1,21 +1,31 @@
 import logging
 import time
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Callable
 from collections import defaultdict
 
-from qrz import QRZAPI, QRZAPIError
+from .qrz import QRZAPI, QRZAPIError
 
 
 logger = logging.getLogger(__name__)
 
 
-def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None) -> Tuple[List, int]:
-    logger.info(f"Processing {len(qsos)} Other QSOs")
+def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None, log_callback: Optional[Callable[[str, str], None]] = None, progress_callback: Optional[Callable[[int, int], None]] = None) -> Tuple[List, int]:
+    def log(level: str, msg: str) -> None:
+        if log_callback:
+            log_callback(level, msg)
+        else:
+            getattr(logger, level.lower(), logger.info)(msg)
+    
+    def progress(current: int, total: int) -> None:
+        if progress_callback:
+            progress_callback(current, total)
+    
+    log('INFO', f"Processing {len(qsos)} Other QSOs")
     
     verified_qsos = []
     
     if not qrz_api:
-        logger.warning("QRZ API not available, skipping QSL verification")
+        log('WARNING', "QRZ API not available, skipping QSL verification")
         return verified_qsos, len(qsos)
     
     qsos_by_call: Dict[str, List] = defaultdict(list)
@@ -25,15 +35,16 @@ def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None) -> Tuple[Li
             qsos_by_call[callsign].append(qso)
     
     unique_calls = len(qsos_by_call)
-    logger.info(f"  Unique callsigns to check: {unique_calls}")
+    log('INFO', f"  Unique callsigns to check: {unique_calls}")
     
     qrz_cache: Dict[str, Tuple[dict, bool]] = {}
     
     checked_count = 0
+    processed_qsos = 0
     for callsign, call_qsos in qsos_by_call.items():
         checked_count += 1
         if checked_count % 10 == 0:
-            logger.info(f"  Progress: {checked_count}/{unique_calls} callsigns checked")
+            log('INFO', f"  Progress: {checked_count}/{unique_calls} callsigns checked")
         
         t_call_start = time.perf_counter()
         try:
@@ -59,9 +70,9 @@ def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None) -> Tuple[Li
             if has_bureau:
                 qslmgr = data.get('qslmgr', '').strip()
                 if qslmgr:
-                    logger.info(f"  QRZ result: {callsign} has QSL bureau (VIA: {qslmgr}) - {len(call_qsos)} QSO(s)")
+                    log('INFO', f"  QRZ result: {callsign} has QSL bureau (VIA: {qslmgr}) - {len(call_qsos)} QSO(s)")
                 else:
-                    logger.info(f"  QRZ result: {callsign} has QSL bureau - {len(call_qsos)} QSO(s)")
+                    log('INFO', f"  QRZ result: {callsign} has QSL bureau - {len(call_qsos)} QSO(s)")
                 
                 for qso in call_qsos:
                     qso_copy = dict(qso)
@@ -69,9 +80,17 @@ def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None) -> Tuple[Li
                     qso_copy['QSL_SENT_VIA'] = 'B'
                     qso_copy['QSL_VIA'] = ''
                     verified_qsos.append(qso_copy)
+                    processed_qsos += 1
+                    progress(processed_qsos, len(qsos))
             else:
-                logger.info(f"  QRZ result: {callsign} does not have QSL bureau - {len(call_qsos)} QSO(s)")
+                log('INFO', f"  QRZ result: {callsign} does not have QSL bureau - {len(call_qsos)} QSO(s)")
+                for _ in call_qsos:
+                    processed_qsos += 1
+                    progress(processed_qsos, len(qsos))
         except QRZAPIError as e:
-            logger.warning(f"  QRZ result: {callsign} lookup error: {e}")
+            log('WARNING', f"  QRZ result: {callsign} lookup error: {e}")
+            for _ in call_qsos:
+                processed_qsos += 1
+                progress(processed_qsos, len(qsos))
     
     return verified_qsos, len(qsos)

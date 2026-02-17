@@ -34,6 +34,5 @@ This project uses open-source libraries which may have their own licenses:
 - **adif-io**: MIT License
 - **pyhamtools**: GNU General Public License v2.0
 - **reportlab**: LGPL/BSD License
-- **Wavelog**: MIT License (https://github.com/wavelog/wavelog)
 
 See `requirements.txt` for complete dependency list.

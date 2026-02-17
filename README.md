@@ -1,20 +1,31 @@
 # QSLMaster
 
-Download QSO from Wavelog platform for QSL card label preparation.
+Download QSO data from Wavelog and prepare ADIF output and printable QSL labels. The project includes both a CLI and a GUI, sharing the same processing core.
+
+## Features
+
+- CLI and GUI based workflows
+- ADIF download and parsing
+- Date range filtering
+- QSL bureau verification via QRZ.com (optional)
+- Country specific processing for Poland (PZK lookup)
+- PDF label generation
+- Background processing and live progress in GUI
 
 ## Requirements
 
 - Python 3.7+
 - Wavelog 2.0.0 or higher
-- requests >= 2.28.0
-- adif-io >= 0.2.5
-- pyhamtools >= 0.12.0
-- reportlab >= 4.0.0
+- CLI dependencies in requirements.txt
+- GUI dependencies in requirements-gui.txt
+
+Tested only on Linux. Other platforms are currently untested.
 
 ## Installation
 
 1. Clone the repository:
 ```bash
+git clone https://github.com/lycanananas/QSLMaster.git
 cd QSLMaster
 ```
 
@@ -32,27 +43,32 @@ source venv/bin/activate
 venv\Scripts\activate
 ```
 
-4. Install dependencies:
+4. Install CLI dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
+5. Install GUI dependencies (optional):
+```bash
+pip install -r requirements-gui.txt
+```
+
 ## Configuration
 
-1. Copy `config.example.json` to `config.json`:
+### CLI configuration file
+
+1. Copy config.example.json to config.json:
 ```bash
 cp config.example.json config.json
 ```
 
-2. Edit `config.json` and fill in:
-   - `api_key`: Your API key from Wavelog
-   - `wavelog_url`: URL of your Wavelog instance (e.g., https://your-wavelog-instance.com)
-   - `qrz_username`: Your QRZ.com username (premium account required for bureau verification)
-   - `qrz_password`: Your QRZ.com password
+2. Edit config.json and fill in:
+   - api_key: Your API key from Wavelog
+   - wavelog_url: URL of your Wavelog instance
+   - qrz_username: Your QRZ.com username (optional)
+   - qrz_password: Your QRZ.com password (optional)
 
-**Note**: The tool automatically retrieves your station ID from Wavelog using the `api/station_info` endpoint. This requires Wavelog version 2.0.0 or higher.
-
-### Example `config.json`:
+Example config.json:
 ```json
 {
   "api_key": "your_api_key_here",
@@ -62,121 +78,108 @@ cp config.example.json config.json
 }
 ```
 
-**Note**: QRZ.com credentials are optional. If not provided, the tool will skip QSL bureau verification for non-Poland stations.
+QRZ.com credentials are optional. If not provided, bureau verification for non-Poland stations is skipped.
+
+### GUI configuration and credentials
+
+The GUI stores configuration in the user profile and keeps secrets in the system keyring.
+
+Config file locations:
+- Linux: `~/.config/qslmaster/config.json`
+- macOS: `~/Library/Application Support/qslmaster/config.json`
+- Windows: `%APPDATA%\QSLMaster\config.json`
+
+Keyring backends:
+- Linux: `libsecret (GNOME Keyring) or KWallet`
+- macOS: `Keychain`
+- Windows: `Credential Manager`
 
 ## Usage
 
-### Download all contacts from Wavelog
+### GUI
+
+Launch the GUI:
 ```bash
-python qslmaster.py --config config.json
+python qslmaster_gui/main.py
 ```
 
-### Download and filter by date range
+### CLI
+
+Download all contacts:
 ```bash
-# QSOs from 2024-01-01 onwards
-python qslmaster.py --config config.json --from-date 2024-01-01
-
-# QSOs only from 2024
-python qslmaster.py --config config.json --from-date 2024-01-01 --to-date 2024-12-31
-
-# QSOs from June 2024
-python qslmaster.py --config config.json --from-date 2024-06-01 --to-date 2024-06-30
+python qslmaster_cli/main.py --config config.json -o output.adif
 ```
 
-### Verbose mode (more information)
+Filter by date range:
 ```bash
-python qslmaster.py --config config.json --from-date 2024-01-01 --verbose
+python qslmaster_cli/main.py --config config.json --from-date 2024-01-01 --to-date 2024-12-31 -o output.adif
 ```
 
-### Help
+Generate PDF labels:
 ```bash
-python qslmaster.py --help
+python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
+```
+
+Help:
+```bash
+python qslmaster_cli/main.py --help
 ```
 
 ## Validating ADIF Output
 
 After generating the ADIF file, validate its integrity:
-
 ```bash
-python validate_adif.py qsl.adi
+python qslmaster_cli/validate_adif.py qsl.adi
 ```
 
-This tool:
-- Verifies ADIF file format
-- Shows total number of QSO records
-- Displays ADIF version and program ID
-- Lists all QSOs with CALL, date, QSL_SENT flag, and VIA field
-- Helps identify any issues with the generated file
+## Building
 
-## Features
+### Build CLI Package
 
-### ADIF Support
-The application downloads contacts from Wavelog in ADIF format and parses them using the `adif-io` library. Key features:
+```bash
+pip install build
+python -m build
+```
 
-- **Robust parsing**: Uses proven `adif-io` library for ADIF format support
-- **Date/Time handling**: Extracts QSO_DATE and TIME_ON fields from ADIF records
-- **Statistics**: Shows date range, number of countries/DXCC, and summary information
+### Build Arch Linux Package
 
-### Date Range Filtering
-Filter downloaded contacts by date range:
+Requires `makepkg`:
+```bash
+makepkg -si
+```
 
-- Use `--from-date` to include only QSOs on or after a specific date
-- Use `--to-date` to include only QSOs on or before a specific date
-- Date format: `YYYY-MM-DD` (e.g., 2024-06-15)
+### Build GUI Standalone (PyInstaller)
 
-The filtered QSO data is prepared for further processing such as label generation.
+```bash
+pip install pyinstaller
+pyinstaller --onefile --windowed qslmaster_gui/main.py
+```
 
-### QSL Bureau Verification
-The application verifies QSL bureau availability for non-Poland QSOs using QRZ.com premium API:
+The executable will be in `dist/` directory.
 
-- **QRZ Integration**: Queries QRZ.com to check if a station has a QSL bureau manager
-- **Flexible Detection**: Recognizes various bureau descriptions (Polish: biuro/bureau, German: büro, French: agence, etc.)
-- **Case Insensitive**: Handles different formatting and capitalization of bureau information
-- **Error Handling**: Gracefully handles lookup failures without stopping the entire process
+## Troubleshooting
 
-### Country-Specific Processing
-- **Poland (SP)**: Queries PZK (Polish Radio Amateur Union) database to find OT- bureau routes
-- **Other Countries**: Uses QRZ.com API to identify stations with QSL bureau managers
+Keyring not available:
+- Ubuntu/Debian GNOME: `sudo apt-get install gnome-keyring dbus-user-session`
+- Ubuntu/Debian KDE: `sudo apt-get install kwalletmanager`
+- Arch Linux (GNOME): `sudo pacman -S gnome-keyring libsecret`
+- Arch Linux (KDE): `sudo pacman -S kwalletmanager`
+
+Cache issues:
+```bash
+rm -rf ~/.cache/qslmaster/
+```
 
 ## API Documentation
 
-More information about the APIs used:
+- Wavelog API: https://github.com/wavelog/wavelog/wiki/API
+- QRZ.com XML API: https://www.qrz.com/page/api
 
-- **Wavelog API**: https://github.com/wavelog/wavelog/wiki/API
-- **QRZ.com XML API**: https://www.qrz.com/page/api (premium account required)
-
-## Project Structure
-
-```
-QSLMaster/
-├── qslmaster.py         # Main application entry point
-├── config.py            # Configuration management module
-├── wavelog.py           # Wavelog API communication module
-├── qrz.py               # QRZ.com API module for QSL bureau verification
-├── poland.py            # Poland DXCC processing (PZK member verification)
-├── other.py             # Other countries processing (QRZ bureau verification)
-├── validate_adif.py     # ADIF file validator
-├── config.example.json  # Example configuration file
-├── requirements.txt     # Project dependencies
-└── README.md            # This file
-```
 
 ## License
 
-QSLMaster is distributed under the **GNU General Public License v3.0**.
-
-This means you are free to use, modify, and distribute this software, but you must:
-- Include the license and copyright notice
-- Document any changes you make
-- Disclose the source code when you distribute it
-- Use the same license for any derivative works
-
-For details, see [LICENSE.md](LICENSE.md) or visit https://www.gnu.org/licenses/gpl-3.0.en.html
+QSLMaster is distributed under the GNU General Public License v3.0. For details, see LICENSE.md or https://www.gnu.org/licenses/gpl-3.0.en.html
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit issues and pull requests.
-
-## Support
-
-For issues, questions, or feature requests, please open an issue on the project repository.
+Contributions are welcome. Please open issues or pull requests.

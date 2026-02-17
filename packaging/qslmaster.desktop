@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=QSLMaster
+Comment=Download QSO data from Wavelog and prepare QSL labels
+Exec=qslmaster
+TryExec=qslmaster
+Icon=qslmaster
+Terminal=false
+Categories=Utility;
+StartupWMClass=QSLMaster
+Keywords=QSL;Ham;Radio;Wavelog;
