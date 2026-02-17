@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QComboBox
+    QPushButton, QComboBox, QApplication, QMessageBox, QDialog
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPixmap
@@ -29,9 +29,9 @@ class QSLMasterMainWindow(QMainWindow):
         self.setWindowTitle("QSLMaster")
         self.setObjectName("QSLMaster")
         
-        icon_path = Path(__file__).parent.parent / 'resources' / 'icon.png'
-        if icon_path.exists():
-            self.setWindowIcon(QIcon(str(icon_path)))
+        self.icon_path = Path(__file__).parent.parent / 'resources' / 'icon.png'
+        if self.icon_path.exists():
+            self.setWindowIcon(QIcon(str(self.icon_path)))
         
         self.setGeometry(100, 100, 900, 700)
 
@@ -53,12 +53,16 @@ class QSLMasterMainWindow(QMainWindow):
         settings_btn.clicked.connect(self.open_settings)
         config_row.addWidget(settings_btn)
 
+        about_btn = QPushButton("About")
+        about_btn.clicked.connect(self.open_about)
+        config_row.addWidget(about_btn)
+
         config_block.addLayout(config_row)
         top_layout.addLayout(config_block)
 
         top_layout.addStretch()
         logo_label = QLabel()
-        logo_pixmap = QPixmap(str(icon_path))
+        logo_pixmap = QPixmap(str(self.icon_path))
         if not logo_pixmap.isNull():
             logo_label.setPixmap(logo_pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         top_layout.addWidget(logo_label)
@@ -109,6 +113,68 @@ class QSLMasterMainWindow(QMainWindow):
         )
         dialog.exec()
         self.refresh_and_update_combo()
+
+    def open_about(self):
+        app = QApplication.instance()
+        version = app.applicationVersion() if app else ""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("About")
+        layout = QVBoxLayout()
+
+        logo_label = QLabel()
+        if self.icon_path.exists():
+            logo_pixmap = QPixmap(str(self.icon_path))
+            if not logo_pixmap.isNull():
+                logo_label.setPixmap(
+                    logo_pixmap.scaled(
+                        192,
+                        192,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(logo_label)
+
+        title_label = QLabel("QSL Master")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        title_label.setStyleSheet("font-weight: 700; font-size: 24px;")
+        layout.addWidget(title_label)
+
+        author_label = QLabel('Adrian "SQ5FOX" Grzeca')
+        author_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        author_label.setStyleSheet("font-size: 18px;")
+        layout.addWidget(author_label)
+
+        email_label = QLabel("<a href=\"mailto:sq5fox@lycanananas.pl\">sq5fox@lycanananas.pl</a>")
+        email_label.setOpenExternalLinks(True)
+        email_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(email_label)
+
+        if version:
+            version_label = QLabel(f"Version: {version}")
+            version_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            layout.addWidget(version_label)
+
+        license_label = QLabel("License: GPLv3")
+        license_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(license_label)
+
+        links_label = QLabel(
+            "<a href=\"https://github.com/lycanananas/QSLMaster\">GitHub</a><br/>"
+            "<a href=\"https://github.com/lycanananas/QSLMaster/issues\">Issue Tracker</a><br/>"
+            "<a href=\"https://github.com/lycanananas/QSLMaster/blob/main/LICENSE.md\">License</a>"
+        )
+        links_label.setOpenExternalLinks(True)
+        links_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(links_label)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def _on_config_deleted(self, deleted_config_id: str):
         if (

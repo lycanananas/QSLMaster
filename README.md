@@ -25,6 +25,7 @@ Tested only on Linux. Other platforms are currently untested.
 
 1. Clone the repository:
 ```bash
+git clone https://github.com/lycanananas/QSLMaster.git
 cd QSLMaster
 ```
 
@@ -130,6 +131,31 @@ After generating the ADIF file, validate its integrity:
 ```bash
 python qslmaster_cli/validate_adif.py qsl.adi
 ```
+
+## Building
+
+### Build CLI Package
+
+```bash
+pip install build
+python -m build
+```
+
+### Build Arch Linux Package
+
+Requires `makepkg`:
+```bash
+makepkg -si
+```
+
+### Build GUI Standalone (PyInstaller)
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --windowed qslmaster_gui/main.py
+```
+
+The executable will be in `dist/` directory.
 
 ## Troubleshooting
 

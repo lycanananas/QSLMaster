@@ -4,7 +4,7 @@ pkgver_base=1.0
 pkgrel=1
 pkgdesc="Download QSO data from Wavelog and prepare ADIF output and printable QSL labels"
 arch=('any')
-url="https://gitlab.com/adrian.grzeca/qslmaster"
+url="https://github.com/lycanananas/QSLMaster"
 license=('GPL3')
 depends=(
   'python'
