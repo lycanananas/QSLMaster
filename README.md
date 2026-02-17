@@ -19,6 +19,8 @@ Download QSO data from Wavelog and prepare ADIF output and printable QSL labels.
 - CLI dependencies in requirements.txt
 - GUI dependencies in requirements-gui.txt
 
+Tested only on Linux. Other platforms are currently untested.
+
 ## Installation
 
 1. Clone the repository:
@@ -82,14 +84,14 @@ QRZ.com credentials are optional. If not provided, bureau verification for non-P
 The GUI stores configuration in the user profile and keeps secrets in the system keyring.
 
 Config file locations:
-- Linux: ~/.config/qslmaster/config.json
-- macOS: ~/Library/Application Support/qslmaster/config.json
-- Windows: %APPDATA%\QSLMaster\config.json
+- Linux: `~/.config/qslmaster/config.json`
+- macOS: `~/Library/Application Support/qslmaster/config.json`
+- Windows: `%APPDATA%\QSLMaster\config.json`
 
 Keyring backends:
-- Linux: libsecret (GNOME Keyring) or KWallet
-- macOS: Keychain
-- Windows: Credential Manager
+- Linux: `libsecret (GNOME Keyring) or KWallet`
+- macOS: `Keychain`
+- Windows: `Credential Manager`
 
 ## Usage
 
@@ -132,8 +134,10 @@ python qslmaster_cli/validate_adif.py qsl.adi
 ## Troubleshooting
 
 Keyring not available:
-- Linux GNOME: sudo apt-get install gnome-keyring dbus-user-session
-- Linux KDE: sudo apt-get install kwalletmanager
+- Ubuntu/Debian GNOME: `sudo apt-get install gnome-keyring dbus-user-session`
+- Ubuntu/Debian KDE: `sudo apt-get install kwalletmanager`
+- Arch Linux (GNOME): `sudo pacman -S gnome-keyring libsecret`
+- Arch Linux (KDE): `sudo pacman -S kwalletmanager`
 
 Cache issues:
 ```bash
