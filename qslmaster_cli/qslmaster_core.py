@@ -38,6 +38,7 @@ class QSLProcessor:
         config: Dict[str, Any],
         progress_callback: Optional[Callable[[str], None]] = None,
         log_callback: Optional[Callable[[str, str], None]] = None,
+        progress_value_callback: Optional[Callable[[int, int], None]] = None,
     ):
         """
         Initialize QSL Processor
@@ -46,10 +47,12 @@ class QSLProcessor:
             config: Configuration dictionary
             progress_callback: Callable(message) for progress updates
             log_callback: Callable(level, message) for logging
+            progress_value_callback: Callable(current, total) for progress percentage
         """
         self.config = config
         self.progress_callback = progress_callback or self._default_callback
         self.log_callback = log_callback or self._default_log_callback
+        self.progress_value_callback = progress_value_callback or self._default_progress_value_callback
         
         self.api_client = None
         self.qrz_api = None
@@ -70,9 +73,15 @@ class QSLProcessor:
         }
         logger.log(level_map.get(level, logging.INFO), message)
     
-    def _progress(self, message: str) -> None:
+    def _default_progress_value_callback(self, current: int, total: int) -> None:
+        """Default progress value callback"""
+        pass
+    
+    def _progress(self, message: str, current: Optional[int] = None, total: Optional[int] = None) -> None:
         """Emit progress message"""
         self.progress_callback(message)
+        if current is not None and total is not None:
+            self.progress_value_callback(current, total)
     
     def _log(self, level: str, message: str) -> None:
         """Emit log message"""
@@ -100,7 +109,6 @@ class QSLProcessor:
                 plist_files = [f for f in zf.namelist() if f.endswith('.plist')]
                 if not plist_files:
                     raise Exception("No .plist file found in ZIP")
-                
                 plist_content = zf.read(plist_files[0])
                 with open(country_file, 'wb') as f:
                     f.write(plist_content)
@@ -282,18 +290,34 @@ class QSLProcessor:
         counts = [f"{self.get_dxcc_name(dxcc)}={len(items)}" for dxcc, items in buckets.items()]
         counts.append(f"Other={len(other_qsos)}")
         self._log('INFO', f"QSOs by DXCC: {', '.join(counts)}")
+        
+        total_qsos = len(qsos)
+        progress_counter = 0
 
         for dxcc, handler in dxcc_handlers.items():
             items = buckets.get(dxcc, [])
             if items:
                 self._progress(f"Processing {self.get_dxcc_name(dxcc)} QSOs...")
-                result = handler(items)
+                
+                def make_callback(start_offset):
+                    def callback(current: int, total_for_handler: int) -> None:
+                        self.progress_value_callback(start_offset + current, total_qsos)
+                    return callback
+                
+                result, total = handler(items, log_callback=self._log, progress_callback=make_callback(progress_counter))
                 if result is not None:
-                    handler_results[dxcc] = (result, len(items))
+                    handler_results[dxcc] = (result, total)
+                progress_counter += len(items)
 
         if other_qsos:
             self._progress("Processing Other QSOs...")
-            verified_other, total_other = process_qsos_other(other_qsos, self.qrz_api)
+            
+            def make_callback(start_offset):
+                def callback(current: int, total_for_handler: int) -> None:
+                    self.progress_value_callback(start_offset + current, total_qsos)
+                return callback
+            
+            verified_other, total_other = process_qsos_other(other_qsos, self.qrz_api, log_callback=self._log, progress_callback=make_callback(progress_counter))
             if verified_other:
                 handler_results['other'] = (verified_other, total_other)
 
@@ -354,7 +378,7 @@ class QSLProcessor:
             }
         """
         try:
-            self._progress("Initializing Wavelog API...")
+            self._progress("Starting QSL processing...")
             self.api_client = WavelogAPI(
                 base_url=self.config['wavelog_url'],
                 api_key=self.config['api_key']
@@ -373,16 +397,20 @@ class QSLProcessor:
             
             self.setup_callinfo()
             
+            self._progress("Downloading ADIF data...")
             adif_content, qso_count = self.download_adif()
+            self._progress("Parsing ADIF data...")
             qsos = self.parse_adif_content(adif_content)
             self._log('INFO', f"ADIF data loaded with {qso_count} QSOs, {len(qsos)} parsed successfully")
             
             if from_date or to_date:
+                self._progress("Filtering QSOs by date...")
                 qsos = self.filter_qsos_by_date_range(qsos, from_date, to_date)
                 self._progress(f"Filtered to {len(qsos)} QSOs")
             
             self.print_qso_summary(qsos)
             
+            self._progress("Processing QSOs by DXCC...")
             handler_results = self.process_qsos_by_dxcc(qsos)
             
             all_qsl_qsos = []
@@ -421,14 +449,17 @@ class QSLProcessor:
                         preview_label_data(all_qsl_qsos, limit=3)
                     
                     self._progress(f"Generating PDF labels to {generate_pdf}...")
-                    generate_pdf_labels(all_qsl_qsos, generate_pdf, debug_labels)
+                    logo_path = self.config.get('logo_path', 'logo.png')
+                    generate_pdf_labels(all_qsl_qsos, generate_pdf, debug_labels, logo_path)
                     output_pdf_path = generate_pdf
+                    self._progress(f"PDF labels generated: {generate_pdf}")
                     self._log('INFO', f"PDF labels generated: {generate_pdf}")
                 except Exception as e:
                     self._log('ERROR', f"Failed to generate PDF labels: {e}")
                     raise
             
             stats['total_to_send'] = len(all_qsl_qsos)
+            self.progress_value_callback(len(qsos), len(qsos))
             
             return {
                 'success': True,

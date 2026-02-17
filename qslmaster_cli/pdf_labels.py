@@ -63,7 +63,7 @@ def format_time(time_str: str) -> str:
         return time_str
 
 
-def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False):
+def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False, logo_path: str = "logo.png"):
     callsign = qso.get('CALL', 'N/A')
     via = qso.get('QSL_VIA', '').strip()
     date = format_date(qso.get('QSO_DATE', ''))
@@ -147,10 +147,13 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     logo_x = x + width - LABEL_PADDING - LOGO_WIDTH - LOGO_RIGHT_MARGIN
     logo_y = y - LABEL_PADDING - 1 * mm - LOGO_HEIGHT
     
-    logo_path = Path(__file__).parent / LOGO_IMAGE_PATH
-    if logo_path.exists():
+    resolved_logo_path = Path(logo_path)
+    if not resolved_logo_path.is_absolute():
+        resolved_logo_path = Path(__file__).parent / logo_path
+    
+    if resolved_logo_path.exists():
         try:
-            img = ImageReader(str(logo_path))
+            img = ImageReader(str(resolved_logo_path))
             c.drawImage(img, logo_x, logo_y, width=LOGO_WIDTH, height=LOGO_HEIGHT, mask='auto')
         except Exception as e:
             logger.warning(f"Failed to load logo image: {e}")
@@ -169,7 +172,7 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
         c.rect(x, y - height, width, height)
 
 
-def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = False):
+def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = False, logo_path: str = "logo.png"):
     if not qsos:
         logger.warning("No QSOs to generate labels for")
         return
@@ -207,7 +210,7 @@ def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = F
                 x = left_margin + col * (label_width + column_gap)
                 y = page_height - top_margin - row * (label_height + row_gap)
                 
-                draw_label(c, qsos[qso_index], x, y, label_width, label_height, debug_mode)
+                draw_label(c, qsos[qso_index], x, y, label_width, label_height, debug_mode, logo_path)
                 
                 qso_index += 1
             

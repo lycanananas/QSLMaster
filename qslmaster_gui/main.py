@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""
-QSLMaster GUI Application
-PyQt6-based graphical interface for QSL processing
-"""
 import sys
+import os
 import logging
 import signal
 from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import QTimer
 
 from .ui.main_window import QSLMasterMainWindow
 
@@ -41,10 +38,19 @@ def main():
     window.show()
     
     def signal_handler(signum, frame):
-        window.close()
-        app.quit()
+        if (window.processing_tab.processor_worker and 
+            window.processing_tab.thread_pool.activeThreadCount() > 0):
+            window.processing_tab.processor_worker.stop()
+            if not window.processing_tab.thread_pool.waitForDone(100):
+                os._exit(1)
+        sys.exit(0)
     
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    timer = QTimer()
+    timer.timeout.connect(lambda: None)
+    timer.start(500)
     
     sys.exit(app.exec())
 

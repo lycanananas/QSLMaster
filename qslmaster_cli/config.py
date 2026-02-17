@@ -26,7 +26,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
         raise ConfigError(f"Error reading configuration file: {e}")
     
     required_fields = ['api_key', 'wavelog_url']
-    optional_fields = ['qrz_username', 'qrz_password']
+    optional_fields = ['qrz_username', 'qrz_password', 'logo_path']
     
     missing_fields = [field for field in required_fields if field not in config]
     if missing_fields:

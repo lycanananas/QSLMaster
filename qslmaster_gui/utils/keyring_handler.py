@@ -1,6 +1,3 @@
-"""
-Keyring handler for secure credential storage
-"""
 import logging
 from typing import Optional
 
@@ -92,3 +89,46 @@ def clear_credentials() -> None:
         logger.info("Credentials cleared from keyring")
     except Exception as e:
         logger.warning(f"Error clearing credentials: {e}")
+
+
+def store_credential(credential_id: str, value: str) -> bool:
+    if not KEYRING_AVAILABLE:
+        logger.warning(f"Keyring not available, credential {credential_id} will not be stored securely")
+        return False
+    
+    try:
+        keyring.set_password(SERVICE_NAME, credential_id, value)
+        logger.info(f"Credential {credential_id} stored in keyring")
+        return True
+    except KeyringError as e:
+        logger.warning(f"Failed to store credential {credential_id}: {e}")
+        return False
+
+
+def get_credential(credential_id: str) -> Optional[str]:
+    if not KEYRING_AVAILABLE:
+        return None
+    
+    try:
+        return keyring.get_password(SERVICE_NAME, credential_id)
+    except KeyringError as e:
+        logger.warning(f"Failed to retrieve credential {credential_id}: {e}")
+        return None
+
+
+def delete_credential(credential_id: str) -> bool:
+    if not KEYRING_AVAILABLE:
+        return False
+    
+    try:
+        try:
+            keyring.delete_password(SERVICE_NAME, credential_id)
+            logger.info(f"Credential {credential_id} deleted from keyring")
+            return True
+        except KeyringError:
+            logger.debug(f"Credential {credential_id} not found in keyring")
+            return True
+    except Exception as e:
+        logger.warning(f"Error deleting credential {credential_id}: {e}")
+        return False
+

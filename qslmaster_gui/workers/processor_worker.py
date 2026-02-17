@@ -1,6 +1,3 @@
-"""
-Qt Worker for processing QSOs in background thread
-"""
 import logging
 from typing import Optional
 from PyQt6.QtCore import QRunnable
@@ -30,15 +27,21 @@ class ProcessorWorker(QRunnable):
         self.output_adif = output_adif
         self.generate_pdf = generate_pdf
         self.debug_labels = debug_labels
+        self.should_stop = False
         
         self.signals = ProcessorSignals()
     
     def run(self):
+        if self.should_stop:
+            self.signals.error.emit("Processing cancelled")
+            return
+            
         try:
             processor = QSLProcessor(
                 self.config,
                 progress_callback=self.signals.progress.emit,
                 log_callback=lambda lvl, msg: self.signals.log.emit(lvl, msg),
+                progress_value_callback=self.signals.progress_value.emit,
             )
             
             result = processor.process(
@@ -50,8 +53,15 @@ class ProcessorWorker(QRunnable):
                 preview_pdf=False,
             )
             
-            self.signals.finished.emit(result)
+            if not self.should_stop:
+                self.signals.finished.emit(result)
+            else:
+                self.signals.error.emit("Processing cancelled")
             
         except Exception as e:
-            logger.exception(f"Worker error: {e}")
-            self.signals.error.emit(str(e))
+            if not self.should_stop:
+                logger.exception(f"Worker error: {e}")
+                self.signals.error.emit(str(e))
+    
+    def stop(self):
+        self.should_stop = True
