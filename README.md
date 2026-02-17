@@ -1,6 +1,6 @@
 # QSLMaster
 
-![QSLMaster Logo](./logo.png)
+<img src="./logo.png" width="150">
 
 Download QSO data from Wavelog and prepare ADIF output and printable QSL labels. The project includes both a CLI and a GUI, sharing the same processing core.
 
@@ -135,7 +135,7 @@ python qslmaster_cli/main.py --help
 
 ### QSL Card Example
 
-![QSL Card](docs/qsl_card.png)
+<img src="docs/qsl_card.png" width="300">
 
 ### Generated PDF Labels
 
