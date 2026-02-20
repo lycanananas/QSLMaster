@@ -92,7 +92,17 @@ class WavelogAPI:
         adif_content = response.get('adif', '')
         return adif_content, qso_count
     
-    def get_contacts_adif(self) -> Tuple[str, int]:
+    def get_contacts_adif(self, station_id: Optional[str] = None) -> Tuple[str, int]:
+        if station_id:
+            adif_content, qso_count = self.get_contacts_adif_for_station(str(station_id))
+            if qso_count == 0:
+                raise WavelogAPIError(f"No QSOs found for station_id={station_id}")
+
+            eoh_pos = adif_content.find('<EOH>')
+            if eoh_pos != -1:
+                adif_content = adif_content[eoh_pos + 5:].strip()
+            return adif_content, qso_count
+
         stations = self.get_station_info()
         
         if not stations:

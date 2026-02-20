@@ -151,13 +151,69 @@ class QSLProcessor:
         except WavelogAPIError as e:
             self._log('ERROR', f"API error: {e}")
             return False
+
+    @staticmethod
+    def normalize_station(station: Dict[str, Any]) -> Dict[str, str]:
+        station_id = str(station.get('station_id', '')).strip()
+        callsign = str(station.get('station_callsign', '')).strip()
+        profile = str(station.get('station_profile_name', '')).strip()
+        active_raw = str(station.get('station_active', '')).strip()
+        active = active_raw == '1' or active_raw.lower() == 'true'
+
+        return {
+            'station_id': station_id,
+            'station_callsign': callsign,
+            'station_profile_name': profile,
+            'station_active': '1' if active else '0',
+        }
+
+    def list_stations(self) -> List[Dict[str, str]]:
+        stations = self.api_client.get_station_info()
+        return [self.normalize_station(station) for station in stations]
+
+    def resolve_station_ids(self, stations: List[Dict[str, str]], station_selectors) -> Optional[List[str]]:
+        if not station_selectors or station_selectors == ['all']:
+            return None
+
+        resolved = []
+        for selector in station_selectors:
+            sel = selector.strip()
+            if not sel or sel.lower() == 'all':
+                continue
+            found = None
+            for station in stations:
+                if station['station_id'] == sel:
+                    found = station['station_id']
+                    break
+            if not found:
+                for station in stations:
+                    if station['station_callsign'].lower() == sel.lower():
+                        found = station['station_id']
+                        break
+            if not found:
+                raise QSLProcessorError(f"Station not found for selector: {selector}")
+            resolved.append(found)
+        return resolved if resolved else None
     
-    def download_adif(self) -> Tuple[str, int]:
+    def download_adif(self, station_ids: Optional[List[str]] = None) -> Tuple[str, int]:
         try:
-            self._progress("Downloading contacts in ADIF format from all stations...")
-            adif_content, qso_count = self.api_client.get_contacts_adif()
-            self._log('INFO', f"Successfully downloaded {qso_count} QSOs")
-            return adif_content, qso_count
+            if station_ids:
+                all_qso_records = []
+                total_qso_count = 0
+                for station_id in station_ids:
+                    self._progress(f"Downloading contacts in ADIF format from station_id={station_id}...")
+                    adif_content, qso_count = self.api_client.get_contacts_adif(station_id=station_id)
+                    self._log('INFO', f"Successfully downloaded {qso_count} QSOs for station {station_id}")
+                    if qso_count > 0:
+                        all_qso_records.append(adif_content)
+                        total_qso_count += qso_count
+                combined_adif = '\n'.join(all_qso_records)
+                return combined_adif, total_qso_count
+            else:
+                self._progress("Downloading contacts in ADIF format from all stations...")
+                adif_content, qso_count = self.api_client.get_contacts_adif()
+                self._log('INFO', f"Successfully downloaded {qso_count} QSOs")
+                return adif_content, qso_count
         except WavelogAPIError as e:
             raise QSLProcessorError(f"API error while downloading ADIF: {e}")
     
@@ -369,6 +425,8 @@ class QSLProcessor:
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
         modes: Optional[str] = None,
+        station_selector=None,
+        list_stations_only: bool = False,
         output_adif: Optional[str] = None,
         generate_pdf: Optional[str] = None,
         debug_labels: bool = False,
@@ -383,6 +441,28 @@ class QSLProcessor:
             
             if not self.check_api_health():
                 raise QSLProcessorError("Wavelog API health check failed")
+
+            stations = self.list_stations()
+
+            if list_stations_only:
+                self._log('INFO', "Station list mode enabled. Skipping QSO analysis.")
+                for station in stations:
+                    status = "(active)" if station['station_active'] == '1' else "(inactive)"
+                    self._log('INFO', f"  Station {station['station_id']}: {station['station_callsign']} - {station['station_profile_name']} {status}")
+                return {
+                    'success': True,
+                    'qsl_qsos': [],
+                    'output_adif': None,
+                    'output_pdf': None,
+                    'stats': {'stations': len(stations)},
+                    'stations': stations,
+                }
+
+            selected_station_ids = self.resolve_station_ids(stations, station_selector)
+            if selected_station_ids:
+                self._log('INFO', f"Selected station_ids={selected_station_ids} for processing")
+            else:
+                self._log('INFO', "Selected all stations for processing")
             
             self.qrz_api = None
             if self.config.get('qrz_username') and self.config.get('qrz_password'):
@@ -393,9 +473,8 @@ class QSLProcessor:
                     self._log('WARNING', f"Failed to initialize QRZ API: {e}")
             
             self.setup_callinfo()
-            
             self._progress("Downloading ADIF data...")
-            adif_content, qso_count = self.download_adif()
+            adif_content, qso_count = self.download_adif(station_ids=selected_station_ids)
             self._progress("Parsing ADIF data...")
             qsos = self.parse_adif_content(adif_content)
             self._log('INFO', f"ADIF data loaded with {qso_count} QSOs, {len(qsos)} parsed successfully")
@@ -474,6 +553,7 @@ class QSLProcessor:
                 'output_adif': output_adif_path,
                 'output_pdf': output_pdf_path,
                 'stats': stats,
+                'stations': stations,
             }
             
         except (ConfigError, QSLProcessorError, WavelogAPIError, ValueError) as e:
@@ -485,6 +565,7 @@ class QSLProcessor:
                 'output_adif': None,
                 'output_pdf': None,
                 'stats': {},
+                'stations': [],
             }
         except Exception as e:
             self._log('ERROR', f"Unexpected error: {e}")
@@ -497,4 +578,5 @@ class QSLProcessor:
                 'output_adif': None,
                 'output_pdf': None,
                 'stats': {},
+                'stations': [],
             }
