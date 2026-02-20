@@ -166,10 +166,9 @@ class QSLMasterMainWindow(QMainWindow):
         email_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(email_label)
 
-        if version:
-            version_label = QLabel(f"Version: {version}")
-            version_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            layout.addWidget(version_label)
+        version_label = QLabel(f"Version: {version if version else 'Unknown'}")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(version_label)
 
         license_label = QLabel("License: GPLv3")
         license_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)

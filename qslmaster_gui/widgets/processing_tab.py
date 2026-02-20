@@ -91,11 +91,8 @@ class ProcessingTab(QWidget):
         self.all_modes_check.stateChanged.connect(self.on_all_modes_toggled)
         mode_layout.addWidget(self.all_modes_check)
         self.mode_list = QListWidget()
-        self.mode_list.setMinimumHeight(70)
-        self.mode_list.setMaximumHeight(140)
-        self.mode_list.setMaximumWidth(180)
         self.mode_list.setEnabled(False)
-        for mode in ['CW', 'SSB', 'AM', 'FM', 'FT8', 'DIGI']:
+        for mode in ['CW', 'SSB', 'USB', 'LSB', 'AM', 'FM', 'FT8', 'JT65', 'RTTY', 'PSK31', 'DIGI', 'DATA', 'SSTV', 'HELL']:
             item = QListWidgetItem(mode)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
@@ -107,7 +104,7 @@ class ProcessingTab(QWidget):
 
         layout.addLayout(selection_layout)
 
-        date_group = QGroupBox("Date Range (Optional)")
+        date_group = QGroupBox("Date Range")
         date_layout = QVBoxLayout()
 
         self.use_date_filter = QCheckBox("Use date filter")

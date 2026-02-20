@@ -33,7 +33,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("qslmaster")
     app.setApplicationDisplayName("QSLMaster")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("1.1.0")
     app.setDesktopFileName("qslmaster")
 
     window = QSLMasterMainWindow()
