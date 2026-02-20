@@ -41,7 +41,7 @@ class ProcessingTab(QWidget):
             stations = processor.list_stations()
             logger.info(f"Retrieved {len(stations)} stations from Wavelog")
             for s in stations:
-                label = f"{s['station_id']} ({s['station_callsign']}) {s['station_profile_name']}"
+                label = f"[{s['station_callsign']}] - {s['station_profile_name']}"
                 logger.info(f"Added station: {label}")
                 item = QListWidgetItem(label)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -91,7 +91,9 @@ class ProcessingTab(QWidget):
         self.all_modes_check.stateChanged.connect(self.on_all_modes_toggled)
         mode_layout.addWidget(self.all_modes_check)
         self.mode_list = QListWidget()
-        self.mode_list.setMinimumHeight(120)
+        self.mode_list.setMinimumHeight(70)
+        self.mode_list.setMaximumHeight(140)
+        self.mode_list.setMaximumWidth(180)
         self.mode_list.setEnabled(False)
         for mode in ['CW', 'SSB', 'AM', 'FM', 'FT8', 'DIGI']:
             item = QListWidgetItem(mode)
@@ -100,32 +102,37 @@ class ProcessingTab(QWidget):
             self.mode_list.addItem(item)
         mode_layout.addWidget(self.mode_list)
         mode_group.setLayout(mode_layout)
+        mode_group.setMaximumWidth(220)
         selection_layout.addWidget(mode_group)
 
         layout.addLayout(selection_layout)
 
         date_group = QGroupBox("Date Range (Optional)")
-        date_layout = QHBoxLayout()
-
-        date_layout.addWidget(QLabel("From Date:"))
-        self.from_date_input = QDateEdit()
-        self.from_date_input.setDate(QDate.currentDate().addDays(-7))
-        self.from_date_input.setCalendarPopup(True)
-        date_layout.addWidget(self.from_date_input)
-
-        date_layout.addWidget(QLabel("To Date:"))
-        self.to_date_input = QDateEdit()
-        self.to_date_input.setDate(QDate.currentDate())
-        self.to_date_input.setCalendarPopup(True)
-        date_layout.addWidget(self.to_date_input)
+        date_layout = QVBoxLayout()
 
         self.use_date_filter = QCheckBox("Use date filter")
         self.use_date_filter.setChecked(True)
         self.use_date_filter.stateChanged.connect(self.on_date_filter_toggled)
         date_layout.addWidget(self.use_date_filter)
 
+        from_layout = QVBoxLayout()
+        from_layout.addWidget(QLabel("From Date:"))
+        self.from_date_input = QDateEdit()
+        self.from_date_input.setDate(QDate.currentDate().addDays(-7))
+        self.from_date_input.setCalendarPopup(True)
+        from_layout.addWidget(self.from_date_input)
+        date_layout.addLayout(from_layout)
+
+        to_layout = QVBoxLayout()
+        to_layout.addWidget(QLabel("To Date:"))
+        self.to_date_input = QDateEdit()
+        self.to_date_input.setDate(QDate.currentDate())
+        self.to_date_input.setCalendarPopup(True)
+        to_layout.addWidget(self.to_date_input)
+        date_layout.addLayout(to_layout)
+
         date_group.setLayout(date_layout)
-        layout.addWidget(date_group)
+        date_group.setMinimumWidth(250)
 
         output_group = QGroupBox("Output Options")
         output_layout = QVBoxLayout()
@@ -163,7 +170,11 @@ class ProcessingTab(QWidget):
         output_layout.addWidget(self.debug_labels)
 
         output_group.setLayout(output_layout)
-        layout.addWidget(output_group)
+
+        options_layout = QHBoxLayout()
+        options_layout.addWidget(date_group)
+        options_layout.addWidget(output_group)
+        layout.addLayout(options_layout)
 
         process_button = QPushButton("Generate QSLs")
         process_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
