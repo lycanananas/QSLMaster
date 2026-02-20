@@ -31,9 +31,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Usage examples:
-  %(prog)s --config config.json -o output.adif
-  %(prog)s -c /path/to/config.json --from-date 2024-01-01 --to-date 2024-12-31 -o output.adif
-  %(prog)s -c config.json --from-date 2024-06-01 -o output.adif --generate-pdf labels.pdf
+    %(prog)s --config config.json -o output.adif
+    %(prog)s -c /path/to/config.json --from-date 2024-01-01 --to-date 2024-12-31 -o output.adif
+    %(prog)s -c config.json --from-date 2024-06-01 -o output.adif --generate-pdf labels.pdf
+    %(prog)s -c config.json --list-stations-only
+    %(prog)s -c config.json --station 3 -o output.adif
         """
     )
     
@@ -64,11 +66,24 @@ Usage examples:
         default=None,
         help='Filter QSOs by mode (comma-separated: CW,SSB,AM,FM,FT8,DIGI)'
     )
+
+    parser.add_argument(
+        '--station',
+        type=str,
+        default='all',
+        help='If omitted, all stations are used. To select specific stations, provide station ID or a comma-separated list of station ID.'
+    )
+
+    parser.add_argument(
+        '--list-stations-only',
+        action='store_true',
+        help='Return only station list and skip QSO analysis'
+    )
     
     parser.add_argument(
         '-o', '--output-adif',
         type=str,
-        required=True,
+        required=False,
         help='Path to output ADIF file for QSOs to send'
     )
     
@@ -92,6 +107,13 @@ Usage examples:
     )
 
     args = parser.parse_args()
+
+    if not args.list_stations_only and not args.output_adif:
+        parser.error('--output-adif is required unless --list-stations-only is used')
+
+    if args.list_stations_only and args.generate_pdf:
+        parser.error('--generate-pdf cannot be used with --list-stations-only')
+
     setup_logging(verbose=args.verbose)
     
     logger = logging.getLogger(__name__)
@@ -107,10 +129,13 @@ Usage examples:
         
         processor = QSLProcessor(config)
         
+        station_selectors = [s.strip() for s in args.station.split(',')] if args.station and args.station.lower() != 'all' else ['all']
         result = processor.process(
             from_date=args.from_date,
             to_date=args.to_date,
             modes=args.modes,
+            station_selector=station_selectors,
+            list_stations_only=args.list_stations_only,
             output_adif=args.output_adif,
             generate_pdf=args.generate_pdf,
             debug_labels=args.debug_labels,
@@ -121,6 +146,22 @@ Usage examples:
             logger.error(f"Processing failed: {result.get('error')}")
             sys.exit(1)
         
+        if args.list_stations_only:
+            stations = result.get('stations', [])
+            header = f"{'ID':<4} {'CALL':<8} {'PROFILE':<48} {'STATUS':<8}"
+            logger.info(f"Station list:")
+            logger.info('-' * len(header))
+            logger.info(header)
+            logger.info('-' * len(header))
+            for station in stations:
+                active = 'active' if station.get('station_active') == '1' else 'inactive'
+                logger.info(f"{station.get('station_id', ''):<4} "
+                            f"{station.get('station_callsign', ''):<8} "
+                            f"{station.get('station_profile_name', ''):<48} "
+                            f"{active:<8}")
+            logger.info('-' * len(header))
+            sys.exit(0)
+
         logger.info(f"Processing completed successfully!")
         logger.info(f"Output ADIF: {result['output_adif']}")
         if result['output_pdf']:

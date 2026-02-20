@@ -32,39 +32,28 @@ class QSLMasterMainWindow(QMainWindow):
         self.load_config()
 
     def init_ui(self):
-        self.setGeometry(100, 100, 900, 700)
+        self.setGeometry(100, 100, 750, 800)
+        self.setMinimumSize(750, 800)
 
         central_widget = QWidget()
         layout = QVBoxLayout()
 
         top_layout = QHBoxLayout()
-
-        config_block = QVBoxLayout()
-        config_block.addWidget(QLabel("Configuration:"))
-
-        config_row = QHBoxLayout()
+        top_layout.addWidget(QLabel("Configuration:"))
         self.config_combo = QComboBox()
         self.config_combo.setMinimumWidth(320)
         self.config_combo.currentIndexChanged.connect(self.on_config_changed)
-        config_row.addWidget(self.config_combo)
+        top_layout.addWidget(self.config_combo)
 
         settings_btn = QPushButton("Edit Settings")
         settings_btn.clicked.connect(self.open_settings)
-        config_row.addWidget(settings_btn)
+        top_layout.addWidget(settings_btn)
 
         about_btn = QPushButton("About")
         about_btn.clicked.connect(self.open_about)
-        config_row.addWidget(about_btn)
-
-        config_block.addLayout(config_row)
-        top_layout.addLayout(config_block)
+        top_layout.addWidget(about_btn)
 
         top_layout.addStretch()
-        logo_label = QLabel()
-        logo_pixmap = QPixmap(str(self.icon_path))
-        if not logo_pixmap.isNull():
-            logo_label.setPixmap(logo_pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        top_layout.addWidget(logo_label)
         layout.addLayout(top_layout)
 
         self.processing_tab = ProcessingTab()
@@ -73,7 +62,34 @@ class QSLMasterMainWindow(QMainWindow):
         central_widget.setLayout(layout)
         self.setCentralWidget(central_widget)
 
+        self.logo_overlay = QLabel(self)
+        self.logo_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        logo_pixmap = QPixmap(str(self.icon_path))
+        if not logo_pixmap.isNull():
+            self.logo_overlay.setPixmap(
+                logo_pixmap.scaled(
+                    64,
+                    64,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+            self.logo_overlay.adjustSize()
+            self.logo_overlay.show()
+            self.logo_overlay.raise_()
+            self._position_logo_overlay()
+        else:
+            self.logo_overlay.hide()
+
         self.statusBar().showMessage("Ready")
+
+    def _position_logo_overlay(self):
+        if not hasattr(self, "logo_overlay") or not self.logo_overlay.isVisible():
+            return
+        margin = 8
+        x_pos = self.width() - self.logo_overlay.width() - margin
+        y_pos = margin
+        self.logo_overlay.move(max(margin, x_pos), y_pos)
 
     def load_config(self):
         try:
@@ -92,11 +108,11 @@ class QSLMasterMainWindow(QMainWindow):
                 if current_id:
                     config = get_config(current_id)
                     if config:
-                        self.processing_tab.current_config = config
+                        self.processing_tab.set_config(config)
                 else:
                     config = get_config(configs[0]['id'])
                     if config:
-                        self.processing_tab.current_config = config
+                        self.processing_tab.set_config(config)
                         set_current_config_id(configs[0]['id'])
 
             self.statusBar().showMessage("Configuration loaded")
@@ -150,10 +166,9 @@ class QSLMasterMainWindow(QMainWindow):
         email_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(email_label)
 
-        if version:
-            version_label = QLabel(f"Version: {version}")
-            version_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            layout.addWidget(version_label)
+        version_label = QLabel(f"Version: {version if version else 'Unknown'}")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(version_label)
 
         license_label = QLabel("License: GPLv3")
         license_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -198,7 +213,7 @@ class QSLMasterMainWindow(QMainWindow):
         if config_id:
             config = get_config(config_id)
             if config:
-                self.processing_tab.current_config = config
+                self.processing_tab.set_config(config)
                 set_current_config_id(config_id)
                 self.statusBar().showMessage(f"Configuration: {self.config_combo.currentText()}")
 
@@ -228,4 +243,12 @@ class QSLMasterMainWindow(QMainWindow):
         ):
             self.processing_tab.thread_pool.waitForDone(5000)
         event.accept()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_logo_overlay()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._position_logo_overlay()
 

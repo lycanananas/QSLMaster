@@ -21,6 +21,7 @@ class ProcessorWorker(QRunnable):
         output_adif: Optional[str] = None,
         generate_pdf: Optional[str] = None,
         debug_labels: bool = False,
+        station_selector=None,
     ):
         super().__init__()
         self.config = config
@@ -30,8 +31,8 @@ class ProcessorWorker(QRunnable):
         self.output_adif = output_adif
         self.generate_pdf = generate_pdf
         self.debug_labels = debug_labels
+        self.station_selector = station_selector
         self.should_stop = False
-        
         self.signals = ProcessorSignals()
     
     def run(self):
@@ -53,6 +54,7 @@ class ProcessorWorker(QRunnable):
                 from_date=self.from_date,
                 to_date=self.to_date,
                 modes=self.modes,
+                station_selector=self.station_selector,
                 output_adif=self.output_adif,
                 generate_pdf=self.generate_pdf,
                 debug_labels=self.debug_labels,

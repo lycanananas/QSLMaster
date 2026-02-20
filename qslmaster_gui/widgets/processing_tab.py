@@ -1,17 +1,16 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QDateEdit, QCheckBox, QGroupBox, QTextEdit, QProgressBar,
-    QFileDialog, QMessageBox, QComboBox
+    QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import Qt, QDate, QThreadPool, pyqtSlot
 from PyQt6.QtGui import QFont
-
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
-
+from qslmaster_cli.qslmaster_core import QSLProcessor
+from qslmaster_cli.wavelog import WavelogAPI
 logger = logging.getLogger(__name__)
 
 
@@ -21,57 +20,116 @@ class ProcessingTab(QWidget):
         self.processor_worker = None
         self.thread_pool = QThreadPool()
         self.current_config = None
+        self.stations_loaded = False
         self.init_ui()
+
+    def set_config(self, config):
+        self.current_config = config
+        if not config or not config.get('api_key') or not config.get('wavelog_url'):
+            self.station_list.clear()
+            self.all_stations_check.setChecked(True)
+            self.station_list.setEnabled(False)
+            self.stations_loaded = False
+        else:
+            self.load_station_list(config)
+    def load_station_list(self, config):
+        logger.info("Loading station list from Wavelog...")
+        self.station_list.clear()
+        try:
+            processor = QSLProcessor(config)
+            processor.api_client = WavelogAPI(config['wavelog_url'], config['api_key'])
+            stations = processor.list_stations()
+            logger.info(f"Retrieved {len(stations)} stations from Wavelog")
+            for s in stations:
+                label = f"[{s['station_callsign']}] - {s['station_profile_name']}"
+                logger.info(f"Added station: {label}")
+                item = QListWidgetItem(label)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                self.station_list.addItem(item)
+            self.all_stations_check.setChecked(True)
+            self.station_list.setEnabled(False)
+            logger.info("Station list loaded successfully")
+            self.stations_loaded = True
+        except Exception as e:
+            logger.error(f"Failed to load station list: {e}")
+            self.all_stations_check.setChecked(True)
+            self.station_list.setEnabled(False)
+            self.stations_loaded = False
+    def on_refresh_station_list(self):
+        if self.current_config:
+            self.load_station_list(self.current_config)
 
     def init_ui(self):
         layout = QVBoxLayout()
 
+        selection_layout = QHBoxLayout()
 
-        date_group = QGroupBox("Date Range (Optional)")
-        date_layout = QHBoxLayout()
+        station_group = QGroupBox("Stations")
+        station_layout = QVBoxLayout()
+        station_header = QHBoxLayout()
+        self.all_stations_check = QCheckBox("All stations")
+        self.all_stations_check.setChecked(True)
+        self.all_stations_check.stateChanged.connect(self.on_all_stations_toggled)
+        station_header.addWidget(self.all_stations_check)
+        self.refresh_station_btn = QPushButton("Refresh")
+        self.refresh_station_btn.clicked.connect(self.on_refresh_station_list)
+        station_header.addWidget(self.refresh_station_btn)
+        station_header.addStretch()
+        station_layout.addLayout(station_header)
+        self.station_list = QListWidget()
+        self.station_list.setMinimumHeight(120)
+        self.station_list.setEnabled(False)
+        station_layout.addWidget(self.station_list)
+        station_group.setLayout(station_layout)
+        selection_layout.addWidget(station_group)
 
-        date_layout.addWidget(QLabel("From Date:"))
-        self.from_date_input = QDateEdit()
-        self.from_date_input.setDate(QDate.currentDate().addDays(-7))
-        self.from_date_input.setCalendarPopup(True)
-        date_layout.addWidget(self.from_date_input)
+        mode_group = QGroupBox("Modes")
+        mode_layout = QVBoxLayout()
+        self.all_modes_check = QCheckBox("All modes")
+        self.all_modes_check.setChecked(True)
+        self.all_modes_check.stateChanged.connect(self.on_all_modes_toggled)
+        mode_layout.addWidget(self.all_modes_check)
+        self.mode_list = QListWidget()
+        self.mode_list.setEnabled(False)
+        for mode in ['CW', 'SSB', 'USB', 'LSB', 'AM', 'FM', 'FT8', 'JT65', 'RTTY', 'PSK31', 'DIGI', 'DATA', 'SSTV', 'HELL']:
+            item = QListWidgetItem(mode)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.mode_list.addItem(item)
+        mode_layout.addWidget(self.mode_list)
+        mode_group.setLayout(mode_layout)
+        mode_group.setMaximumWidth(220)
+        selection_layout.addWidget(mode_group)
 
-        date_layout.addWidget(QLabel("To Date:"))
-        self.to_date_input = QDateEdit()
-        self.to_date_input.setDate(QDate.currentDate())
-        self.to_date_input.setCalendarPopup(True)
-        date_layout.addWidget(self.to_date_input)
+        layout.addLayout(selection_layout)
+
+        date_group = QGroupBox("Date Range")
+        date_layout = QVBoxLayout()
 
         self.use_date_filter = QCheckBox("Use date filter")
         self.use_date_filter.setChecked(True)
         self.use_date_filter.stateChanged.connect(self.on_date_filter_toggled)
         date_layout.addWidget(self.use_date_filter)
 
-        date_group.setLayout(date_layout)
-        layout.addWidget(date_group)
+        from_layout = QVBoxLayout()
+        from_layout.addWidget(QLabel("From Date:"))
+        self.from_date_input = QDateEdit()
+        self.from_date_input.setDate(QDate.currentDate().addDays(-7))
+        self.from_date_input.setCalendarPopup(True)
+        from_layout.addWidget(self.from_date_input)
+        date_layout.addLayout(from_layout)
 
-        mode_group = QGroupBox("Mode Filter (Optional)")
-        mode_layout = QHBoxLayout()
-        
-        self.mode_all_checkbox = QCheckBox("ALL")
-        self.mode_all_checkbox.setChecked(True)
-        self.mode_all_checkbox.stateChanged.connect(self.on_mode_all_toggled)
-        mode_layout.addWidget(self.mode_all_checkbox)
-        
-        mode_layout.addSpacing(20)
-        
-        self.mode_checkboxes = {}
-        for mode in ['CW', 'SSB', 'AM', 'FM', 'FT8', 'DIGI']:
-            checkbox = QCheckBox(mode)
-            checkbox.setChecked(True)
-            checkbox.setEnabled(False)
-            checkbox.stateChanged.connect(self.on_individual_mode_toggled)
-            self.mode_checkboxes[mode] = checkbox
-            mode_layout.addWidget(checkbox)
-        
-        mode_layout.addStretch()
-        mode_group.setLayout(mode_layout)
-        layout.addWidget(mode_group)
+        to_layout = QVBoxLayout()
+        to_layout.addWidget(QLabel("To Date:"))
+        self.to_date_input = QDateEdit()
+        self.to_date_input.setDate(QDate.currentDate())
+        self.to_date_input.setCalendarPopup(True)
+        to_layout.addWidget(self.to_date_input)
+        date_layout.addLayout(to_layout)
+
+        date_group.setLayout(date_layout)
+        date_group.setMinimumWidth(250)
 
         output_group = QGroupBox("Output Options")
         output_layout = QVBoxLayout()
@@ -109,7 +167,11 @@ class ProcessingTab(QWidget):
         output_layout.addWidget(self.debug_labels)
 
         output_group.setLayout(output_layout)
-        layout.addWidget(output_group)
+
+        options_layout = QHBoxLayout()
+        options_layout.addWidget(date_group)
+        options_layout.addWidget(output_group)
+        layout.addLayout(options_layout)
 
         process_button = QPushButton("Generate QSLs")
         process_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
@@ -158,33 +220,21 @@ class ProcessingTab(QWidget):
         for handler in root_logger.handlers:
             handler.setLevel(level)
     
-    def on_mode_all_toggled(self):
-        checked = self.mode_all_checkbox.isChecked()
-        for checkbox in self.mode_checkboxes.values():
-            checkbox.blockSignals(True)
-            checkbox.setEnabled(not checked)
-            if checked:
-                checkbox.setChecked(False)
-            else:
-                checkbox.setChecked(True)
-            checkbox.blockSignals(False)
-    
-    def on_individual_mode_toggled(self):
-        all_checked = all(cb.isChecked() for cb in self.mode_checkboxes.values())
-        any_unchecked = any(not cb.isChecked() for cb in self.mode_checkboxes.values())
-        
-        self.mode_all_checkbox.blockSignals(True)
-        if all_checked:
-            self.mode_all_checkbox.setChecked(True)
-        elif any_unchecked:
-            self.mode_all_checkbox.setChecked(False)
-        self.mode_all_checkbox.blockSignals(False)
+    def on_all_stations_toggled(self):
+        self.station_list.setEnabled(not self.all_stations_check.isChecked())
+
+    def on_all_modes_toggled(self):
+        self.mode_list.setEnabled(not self.all_modes_check.isChecked())
     
     def get_selected_modes(self) -> str:
-        if self.mode_all_checkbox.isChecked():
+        if self.all_modes_check.isChecked():
             return None
         
-        selected = [mode for mode, cb in self.mode_checkboxes.items() if cb.isChecked()]
+        selected = []
+        for i in range(self.mode_list.count()):
+            item = self.mode_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.text())
         return ','.join(selected) if selected else None
     
     def _check_file_overwrite(self, adif_path: str, pdf_path: str) -> bool:
@@ -254,6 +304,9 @@ class ProcessingTab(QWidget):
             )
             return
 
+        if not self.stations_loaded:
+            self.load_station_list(config_to_use)
+
         from_date = None
         to_date = None
         if self.use_date_filter.isChecked():
@@ -264,9 +317,19 @@ class ProcessingTab(QWidget):
 
         output_adif = self.output_adif_input.text()
         output_pdf = self.output_pdf_input.text() if self.generate_pdf.isChecked() else None
-        
+
         if not self._check_file_overwrite(output_adif, output_pdf):
             return
+
+        selected_stations = []
+        if self.all_stations_check.isChecked():
+            selected_stations = ['all']
+        else:
+            for i in range(self.station_list.count()):
+                item = self.station_list.item(i)
+                if item.checkState() == Qt.CheckState.Checked:
+                    selected_stations.append(item.text().split(' ')[0])
+        station_selector = selected_stations if selected_stations else ['all']
 
         self.processor_worker = ProcessorWorker(
             config_to_use,
@@ -276,6 +339,7 @@ class ProcessingTab(QWidget):
             output_adif=output_adif,
             generate_pdf=output_pdf,
             debug_labels=self.debug_labels.isChecked(),
+            station_selector=station_selector,
         )
 
         self.processor_worker.signals.progress.connect(self.on_progress)
