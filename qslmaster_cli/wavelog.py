@@ -1,6 +1,5 @@
 import requests
 from typing import Dict, Any, Optional, Tuple
-from urllib.parse import urljoin
 
 
 class WavelogAPIError(Exception):
@@ -18,6 +17,16 @@ class WavelogAPI:
         })
         
         self._check_version()
+
+    def _build_api_url(self, endpoint: str) -> str:
+        endpoint = endpoint.lstrip('/')
+        if endpoint.startswith('api/'):
+            endpoint = endpoint[4:]
+
+        if self.base_url.endswith('/api'):
+            return f"{self.base_url}/{endpoint}"
+
+        return f"{self.base_url}/api/{endpoint}"
     
     def _check_version(self) -> None:
         version_data = self.get_version()
@@ -36,7 +45,7 @@ class WavelogAPI:
             raise WavelogAPIError(f"Cannot parse Wavelog version '{version_str}': {e}")
     
     def _make_request(self, endpoint: str, data: Optional[Dict[str, Any]] = None, timeout: int = 10, use_get: bool = False) -> Dict[str, Any]:
-        url = urljoin(self.base_url, endpoint)
+        url = self._build_api_url(endpoint)
         
         if data is None:
             data = {}
@@ -63,10 +72,10 @@ class WavelogAPI:
             raise WavelogAPIError(f"Invalid JSON response: {e}")
     
     def get_version(self) -> Dict[str, Any]:
-        return self._make_request('api/version')
+        return self._make_request('version')
     
     def get_station_info(self) -> list:
-        url = urljoin(self.base_url, f'api/station_info/{self.api_key}')
+        url = self._build_api_url(f'station_info/{self.api_key}')
         
         try:
             response = self.session.get(url, timeout=10)
@@ -87,7 +96,7 @@ class WavelogAPI:
             raise WavelogAPIError(f"Invalid JSON response: {e}")
     
     def get_contacts_adif_for_station(self, station_id: str) -> Tuple[str, int]:
-        response = self._make_request('api/get_contacts_adif', {'station_id': station_id, 'fetchfromid': 0}, timeout=30)
+        response = self._make_request('get_contacts_adif', {'station_id': station_id, 'fetchfromid': 0}, timeout=30)
         qso_count = response.get('exported_qsos', 0)
         adif_content = response.get('adif', '')
         return adif_content, qso_count

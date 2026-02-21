@@ -66,7 +66,7 @@ cp config.example.json config.json
 
 2. Edit config.json and fill in:
    - `api_key` - Your API key from Wavelog
-   - `wavelog_url` - URL of your Wavelog instance
+  - `wavelog_url` - URL of your Wavelog instance (e.g. `https://wavelog.example.com`, `https://wavelog.example.com/index.php`, or `https://wavelog.example.com/index.php/api`)
    - `qrz_username` - Your QRZ.com username (optional)
    - `qrz_password` - Your QRZ.com password (optional)
 
