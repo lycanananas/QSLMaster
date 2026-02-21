@@ -1,6 +1,6 @@
 pkgname=qslmaster-git
-pkgver=1.1.46e5e07
-pkgver_base=1.1
+pkgver=1.2.a8f3d27
+pkgver_base=1.2
 pkgrel=1
 pkgdesc="Download QSO data from Wavelog and prepare ADIF output and printable QSL labels"
 arch=('any')

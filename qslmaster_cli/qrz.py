@@ -20,7 +20,7 @@ class QRZAPI:
         self.session_key = None
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'QSLMaster/1.0'
+            'User-Agent': 'QSLMaster/1.2'
         })
         self.logger = logging.getLogger(__name__)
     

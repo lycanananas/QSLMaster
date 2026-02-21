@@ -21,6 +21,10 @@ class ProcessingTab(QWidget):
         self.thread_pool = QThreadPool()
         self.current_config = None
         self.stations_loaded = False
+        self.qrz_error_count = 0
+        self.pzk_error_count = 0
+        self.qrz_disabled = False
+        self.pzk_disabled = False
         self.init_ui()
 
     def set_config(self, config):
@@ -351,6 +355,10 @@ class ProcessingTab(QWidget):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.log_output.clear()
+        self.qrz_error_count = 0
+        self.pzk_error_count = 0
+        self.qrz_disabled = False
+        self.pzk_disabled = False
 
         self.process_button.setEnabled(False)
         self.thread_pool.start(self.processor_worker)
@@ -368,6 +376,15 @@ class ProcessingTab(QWidget):
     @pyqtSlot(str, str)
     def on_log(self, level: str, message: str):
         self.log_output.append(f"[{level}] {message}")
+        message_lower = message.lower()
+        if "qrz result:" in message_lower and "lookup error" in message_lower:
+            self.qrz_error_count += 1
+        if "pzk result:" in message_lower and "lookup error" in message_lower:
+            self.pzk_error_count += 1
+        if "ignoring qrz lookups for remaining callsigns" in message_lower:
+            self.qrz_disabled = True
+        if "ignoring pzk lookups for remaining callsigns" in message_lower:
+            self.pzk_disabled = True
 
     @pyqtSlot(dict)
     def on_finished(self, result: dict):
@@ -386,6 +403,15 @@ class ProcessingTab(QWidget):
             stats_text += f"  ADIF: {result['output_adif']}\n"
             if result['output_pdf']:
                 stats_text += f"  PDF: {result['output_pdf']}\n"
+
+            if self.qrz_error_count > 0 or self.pzk_error_count > 0:
+                stats_text += "\nAPI errors:\n"
+                if self.qrz_error_count > 0:
+                    qrz_status = " (ignored after 3 errors)" if self.qrz_disabled else ""
+                    stats_text += f"  QRZ: {self.qrz_error_count} error(s){qrz_status}\n"
+                if self.pzk_error_count > 0:
+                    pzk_status = " (ignored after 3 errors)" if self.pzk_disabled else ""
+                    stats_text += f"  PZK: {self.pzk_error_count} error(s){pzk_status}\n"
 
             QMessageBox.information(self, "Processing Complete", stats_text)
         else:

@@ -16,6 +16,10 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 
+class PZKAPIError(Exception):
+    pass
+
+
 def _parse_pzk_response(content: bytes) -> Optional[Tuple[str, str]]:
     if lxml_html is None:
         return None
@@ -36,16 +40,19 @@ def _fetch_pzk_member_info(homecall: str) -> Optional[Tuple[str, str]]:
         "Submit": "Poka%BF",
     }
     t_start = time.perf_counter()
-    response = requests.post(
-        "https://pzk.org.pl/osec_ec_members_view.php",
-        data=post_data,
-        timeout=20,
-    )
+    try:
+        response = requests.post(
+            "https://pzk.org.pl/osec_ec_members_view.php",
+            data=post_data,
+            timeout=20,
+        )
+    except requests.exceptions.RequestException as e:
+        raise PZKAPIError(f"PZK request failed: {e}")
     t_http = time.perf_counter()
     http_time = (t_http - t_start) * 1000
     
     if response.status_code != 200:
-        return None
+        raise PZKAPIError(f"PZK HTTP error: {response.status_code}")
     
     result = _parse_pzk_response(response.content)
     t_end = time.perf_counter()
@@ -81,6 +88,8 @@ def process_qsos_poland(qsos: List, log_callback: Optional[Callable[[str, str], 
     log('INFO', f"  Unique callsigns to check: {unique_calls}")
     
     pzk_cache: Dict[str, Optional[Tuple[str, str]]] = {}
+    pzk_error_count = 0
+    pzk_disabled = False
     
     checked_count = 0
     processed_qsos = 0
@@ -88,6 +97,12 @@ def process_qsos_poland(qsos: List, log_callback: Optional[Callable[[str, str], 
         checked_count += 1
         if checked_count % 10 == 0:
             log('INFO', f"  Progress: {checked_count}/{unique_calls} callsigns checked")
+
+        if pzk_disabled:
+            for _ in call_qsos:
+                processed_qsos += 1
+                progress(processed_qsos, len(qsos))
+            continue
         
         t_call_start = time.perf_counter()
         try:
@@ -147,6 +162,15 @@ def process_qsos_poland(qsos: List, log_callback: Optional[Callable[[str, str], 
                 for _ in call_qsos:
                     processed_qsos += 1
                     progress(processed_qsos, len(qsos))
+        except PZKAPIError as e:
+            pzk_error_count += 1
+            log('WARNING', f"  PZK result: {fullcall} lookup error: {e}")
+            if pzk_error_count >= 3 and not pzk_disabled:
+                pzk_disabled = True
+                log('WARNING', "  PZK API returned errors 3 times - ignoring PZK lookups for remaining callsigns")
+            for _ in call_qsos:
+                processed_qsos += 1
+                progress(processed_qsos, len(qsos))
         except Exception as e:
             log('WARNING', f"  PZK result: {fullcall} lookup error: {e}")
             for _ in call_qsos:

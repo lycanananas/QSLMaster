@@ -38,6 +38,8 @@ def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None, log_callbac
     log('INFO', f"  Unique callsigns to check: {unique_calls}")
     
     qrz_cache: Dict[str, Tuple[dict, bool]] = {}
+    qrz_error_count = 0
+    qrz_disabled = False
     
     checked_count = 0
     processed_qsos = 0
@@ -45,6 +47,12 @@ def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None, log_callbac
         checked_count += 1
         if checked_count % 10 == 0:
             log('INFO', f"  Progress: {checked_count}/{unique_calls} callsigns checked")
+
+        if qrz_disabled:
+            for _ in call_qsos:
+                processed_qsos += 1
+                progress(processed_qsos, len(qsos))
+            continue
         
         t_call_start = time.perf_counter()
         try:
@@ -88,7 +96,11 @@ def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None, log_callbac
                     processed_qsos += 1
                     progress(processed_qsos, len(qsos))
         except QRZAPIError as e:
+            qrz_error_count += 1
             log('WARNING', f"  QRZ result: {callsign} lookup error: {e}")
+            if qrz_error_count >= 3 and not qrz_disabled:
+                qrz_disabled = True
+                log('WARNING', "  QRZ API returned errors 3 times - ignoring QRZ lookups for remaining callsigns")
             for _ in call_qsos:
                 processed_qsos += 1
                 progress(processed_qsos, len(qsos))

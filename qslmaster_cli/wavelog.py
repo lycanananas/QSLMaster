@@ -13,7 +13,7 @@ class WavelogAPI:
         self.api_key = api_key
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'QSLMaster/1.0'
+            'User-Agent': 'QSLMaster/1.2'
         })
         
         self._check_version()
