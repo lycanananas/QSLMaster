@@ -456,6 +456,8 @@ class QSLProcessor:
                 adif_id = self.callinfo.get_adif_id(homecall)
                 if adif_id in ignored_dxcc:
                     skipped_by_dxcc[adif_id] = skipped_by_dxcc.get(adif_id, 0) + 1
+                    dxcc_name = self.get_dxcc_name(adif_id)
+                    self._log('INFO', f"Ignored QSO for callsign {fullcall} (homecall: {homecall}) by DXCC {dxcc_name} ({adif_id})")
                     continue
             except Exception:
                 pass
