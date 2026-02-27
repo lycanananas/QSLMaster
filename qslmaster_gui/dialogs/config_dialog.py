@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QComboBox, QMessageBox, QFileDialog,
-    QListWidget, QListWidgetItem
+    QListWidget, QListWidgetItem, QRadioButton
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen
@@ -49,7 +49,19 @@ class ConfigDialog(QDialog):
 
         left_column = QVBoxLayout()
 
-        wavelog_group = QGroupBox("Wavelog Configuration")
+        source_group = QGroupBox("Data Source")
+        source_layout = QVBoxLayout()
+        self.source_wavelog_radio = QRadioButton("Wavelog API")
+        self.source_adif_file_radio = QRadioButton("ADIF File")
+        self.source_wavelog_radio.setChecked(True)
+        self.source_wavelog_radio.toggled.connect(self.on_source_changed)
+        self.source_adif_file_radio.toggled.connect(self.on_source_changed)
+        source_layout.addWidget(self.source_wavelog_radio)
+        source_layout.addWidget(self.source_adif_file_radio)
+        source_group.setLayout(source_layout)
+        left_column.addWidget(source_group)
+
+        self.wavelog_group = QGroupBox("Wavelog Configuration")
         wavelog_layout = QVBoxLayout()
 
         wavelog_layout.addWidget(QLabel("Wavelog URL:"))
@@ -63,8 +75,8 @@ class ConfigDialog(QDialog):
         self.api_key_input.setPlaceholderText("Your Wavelog API key")
         wavelog_layout.addWidget(self.api_key_input)
 
-        wavelog_group.setLayout(wavelog_layout)
-        left_column.addWidget(wavelog_group)
+        self.wavelog_group.setLayout(wavelog_layout)
+        left_column.addWidget(self.wavelog_group)
 
         qrz_group = QGroupBox("QRZ.com Configuration (Optional)")
         qrz_layout = QVBoxLayout()
@@ -166,6 +178,24 @@ class ConfigDialog(QDialog):
         layout.addLayout(button_layout)
         self.setLayout(layout)
         self.load_dxcc_options()
+        self.on_source_changed()
+
+    def get_selected_source(self) -> str:
+        return 'adif_file' if self.source_adif_file_radio.isChecked() else 'wavelog'
+
+    def set_selected_source(self, source: str):
+        normalized = str(source or 'wavelog').strip().lower()
+        if normalized in {'adif', 'file'}:
+            normalized = 'adif_file'
+        if normalized == 'adif_file':
+            self.source_adif_file_radio.setChecked(True)
+        else:
+            self.source_wavelog_radio.setChecked(True)
+        self.on_source_changed()
+
+    def on_source_changed(self):
+        is_wavelog = self.get_selected_source() == 'wavelog'
+        self.wavelog_group.setEnabled(is_wavelog)
 
     def load_dxcc_options(self, force_reload: bool = False):
         selected_ids = set(self.get_selected_dxcc_ids())
@@ -316,6 +346,7 @@ class ConfigDialog(QDialog):
     def load_current_config(self):
         config_id = self.config_combo.currentData()
         if not config_id:
+            self.set_selected_source('wavelog')
             self.logo_input.clear()
             self.update_logo_preview('')
             self.clear_dxcc_selection()
@@ -323,6 +354,7 @@ class ConfigDialog(QDialog):
 
         config = get_config(config_id)
         if config:
+            self.set_selected_source(config.get('source', 'wavelog'))
             self.wavelog_url_input.setText(config.get('wavelog_url', ''))
             self.api_key_input.setText(config.get('api_key', ''))
             self.qrz_username_input.setText(config.get('qrz_username', ''))
@@ -358,13 +390,15 @@ class ConfigDialog(QDialog):
             self.update_logo_preview('')
 
     def save_config(self):
-        if not self.wavelog_url_input.text():
-            QMessageBox.warning(self, "Validation Error", "Wavelog URL is required")
-            return
+        source = self.get_selected_source()
+        if source == 'wavelog':
+            if not self.wavelog_url_input.text():
+                QMessageBox.warning(self, "Validation Error", "Wavelog URL is required")
+                return
 
-        if not self.api_key_input.text():
-            QMessageBox.warning(self, "Validation Error", "API Key is required")
-            return
+            if not self.api_key_input.text():
+                QMessageBox.warning(self, "Validation Error", "API Key is required")
+                return
 
         config_id = self.config_combo.currentData()
         if config_id:
@@ -386,6 +420,8 @@ class ConfigDialog(QDialog):
                 self.api_key_input.text(),
                 self.qrz_password_input.text() if self.qrz_password_input.text() else None,
                 self.get_selected_dxcc_ids(),
+                source,
+                '',
             ):
                 logo_file = self.logo_input.text().strip()
                 if logo_file:
@@ -399,13 +435,15 @@ class ConfigDialog(QDialog):
             self.save_config_as()
 
     def save_config_as(self):
-        if not self.wavelog_url_input.text():
-            QMessageBox.warning(self, "Validation Error", "Wavelog URL is required")
-            return
+        source = self.get_selected_source()
+        if source == 'wavelog':
+            if not self.wavelog_url_input.text():
+                QMessageBox.warning(self, "Validation Error", "Wavelog URL is required")
+                return
 
-        if not self.api_key_input.text():
-            QMessageBox.warning(self, "Validation Error", "API Key is required")
-            return
+            if not self.api_key_input.text():
+                QMessageBox.warning(self, "Validation Error", "API Key is required")
+                return
 
         name_dialog = QDialog(self)
         name_dialog.setWindowTitle("New Configuration")
@@ -448,6 +486,8 @@ class ConfigDialog(QDialog):
             self.api_key_input.text(),
             self.qrz_password_input.text() if self.qrz_password_input.text() else None,
             self.get_selected_dxcc_ids(),
+            source,
+            '',
         )
 
         if config_id:

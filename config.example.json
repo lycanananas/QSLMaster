@@ -1,6 +1,8 @@
 {
+  "source": "wavelog",
   "api_key": "your_api_key_here",
   "wavelog_url": "https://wavelog.example.com",
+  "adif_file_path": "/path/to/input.adi",
   "qrz_username": "your_qrz_username",
   "qrz_password": "your_qrz_password",
   "ignored_dxcc": [15, 54]

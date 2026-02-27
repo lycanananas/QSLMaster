@@ -27,7 +27,7 @@ def setup_logging(verbose: bool = False) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='QSLMaster - Download QSO from Wavelog for QSL card label preparation',
+        description='QSLMaster - Prepare QSL card labels from Wavelog or ADIF file source',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Usage examples:
@@ -44,6 +44,21 @@ Usage examples:
         type=str,
         required=True,
         help='Path to configuration JSON file'
+    )
+
+    parser.add_argument(
+        '--source',
+        choices=['wavelog', 'adif_file'],
+        default=None,
+        help='Override source from config: wavelog or adif_file'
+    )
+
+    parser.add_argument(
+        '--adif-source',
+        dest='adif_source',
+        type=str,
+        default=None,
+        help='Path to source ADIF file (used when source=adif_file)'
     )
     
     parser.add_argument(
@@ -121,11 +136,31 @@ Usage examples:
     try:
         logger.info(f"Loading configuration from: {args.config}")
         config = load_config(args.config)
+
+        if args.source:
+            config['source'] = args.source
+        if args.adif_source:
+            config['adif_file_path'] = args.adif_source
+
         validate_config(config)
         logger.info("Configuration loaded and validated")
+
+        source = config.get('source', 'wavelog')
+
+        if args.list_stations_only and source != 'wavelog':
+            logger.error('--list-stations-only is available only for source=wavelog')
+            sys.exit(1)
+
+        if source == 'adif_file' and not str(config.get('adif_file_path', '')).strip():
+            logger.error('For source=adif_file provide ADIF file using --adif-source or adif_file_path in config')
+            sys.exit(1)
         
         if args.verbose:
-            logger.debug(f"Wavelog URL: {config['wavelog_url']}")
+            logger.debug(f"Source: {source}")
+            if source == 'wavelog':
+                logger.debug(f"Wavelog URL: {config.get('wavelog_url', '')}")
+            else:
+                logger.debug(f"ADIF file path: {config.get('adif_file_path', '')}")
         
         processor = QSLProcessor(config)
         
