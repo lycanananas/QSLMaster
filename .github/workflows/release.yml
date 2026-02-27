@@ -118,7 +118,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: qslmaster-${{ needs.validate_tag.outputs.version }}-${{ matrix.os }}-deb
+          name: qslmaster-${{ needs.validate_tag.outputs.version }}-${{ matrix.os }}-deb-amd64
           path: qslmaster_${{ needs.validate_tag.outputs.version }}-1_*_amd64.deb
 
   build_windows:
@@ -200,7 +200,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: qslmaster-${{ needs.validate_tag.outputs.version }}-arch
+          name: qslmaster-${{ needs.validate_tag.outputs.version }}-arch-x86_64
           path: out/*
 
   publish_release:
@@ -219,6 +219,7 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mapfile -d '' files < <(find artifacts -type f -print0 | sort -z)
           gh release create "$GITHUB_REF_NAME" "${files[@]}" \
