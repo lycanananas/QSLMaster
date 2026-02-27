@@ -123,7 +123,7 @@ python qslmaster_cli/main.py --config config.json --from-date 2024-01-01 --to-da
 
 Generate PDF labels:
 ```bash
-python qslmaster_cgotosli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
+python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
 ```
 
 Help:
@@ -135,7 +135,9 @@ python qslmaster_cli/main.py --help
 
 ### Application Interface
 
-![QSLMaster GUI Screenshot](docs/screenshot.png)
+![QSLMaster GUI Screenshot](docs/screenshot1.png)
+
+![QSLMaster GUI Screenshot](docs/screenshot2.png)
 
 ### QSL Card Example
 
@@ -187,17 +189,17 @@ This runs basic tests for the `extract_homecall()` function which handles variou
 ### Build CLI Package
 
 ```bash
-pip install build
-python -m build
+pip install pyinstaller
+pyinstaller --onefile --name qslmaster-cli qslmaster_cli/main.py
 ```
 
 ### Build Arch Linux Package
 
 Requires `makepkg`:
 ```bash
-VERSION=1.2.3
-sed "s/__VERSION__/${VERSION}/g" arch/PKGBUILD.release > PKGBUILD
-makepkg -p PKGBUILD -si
+VERSION=$(python -c "from qslmaster_version import SOURCE_VERSION; print(SOURCE_VERSION)")
+sed "s/__VERSION__/${VERSION}/g" arch/PKGBUILD.release > PKGBUILD.release
+makepkg -p PKGBUILD.release -si
 ```
 
 ### Build GUI Standalone (PyInstaller)

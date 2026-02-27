@@ -25,7 +25,23 @@ jobs:
             echo "Tag must match vMAJOR.MINOR.PATCH"
             exit 1
           fi
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          TAG_VERSION="${TAG#v}"
+          SOURCE_VERSION="$(python - << 'PY'
+          import re
+          from pathlib import Path
+
+          content = Path('qslmaster_version.py').read_text(encoding='utf-8')
+          match = re.search(r'^SOURCE_VERSION\s*=\s*[\"\']([^\"\']+)[\"\']', content, flags=re.MULTILINE)
+          if not match:
+              raise SystemExit('SOURCE_VERSION not found in qslmaster_version.py')
+          print(match.group(1))
+          PY
+          )"
+          if [[ "$TAG_VERSION" != "$SOURCE_VERSION" ]]; then
+            echo "Tag version ($TAG_VERSION) must match SOURCE_VERSION ($SOURCE_VERSION)"
+            exit 1
+          fi
+          echo "version=${SOURCE_VERSION}" >> "$GITHUB_OUTPUT"
 
       - run: |
           git fetch origin master --depth=1
@@ -56,6 +72,7 @@ jobs:
           install -d "$PKGROOT/DEBIAN"
           install -d "$PKGROOT/usr/lib/qslmaster"
           install -d "$PKGROOT/usr/lib/qslmaster/vendor"
+          install -m644 qslmaster_version.py "$PKGROOT/usr/lib/qslmaster/qslmaster_version.py"
 
           pkg_dirs=(
             qslmaster_cli

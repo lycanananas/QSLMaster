@@ -8,6 +8,7 @@ import requests
 
 from .config import load_config, validate_config, ConfigError
 from .qrz import QRZAPI, QRZAPIError
+from qslmaster_version import get_user_agent
 
 
 REQUIRED_CALLSIGNS = [
@@ -79,7 +80,7 @@ def _fetch_random_callsigns(count: int) -> List[str]:
     _print_progress(0, 0)
 
     with requests.Session() as session:
-        session.headers.update({"User-Agent": "QSLMaster/1.2"})
+        session.headers.update({"User-Agent": get_user_agent()})
         for attempt in range(1, max_attempts + 1):
             if len(callsigns) >= count:
                 break

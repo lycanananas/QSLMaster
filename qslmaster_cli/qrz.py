@@ -7,6 +7,7 @@ import unicodedata
 from typing import Dict, Any, Optional
 
 from .callsign_utils import extract_homecall
+from qslmaster_version import get_user_agent
 
 
 class QRZAPIError(Exception):
@@ -22,7 +23,7 @@ class QRZAPI:
         self.session_key = None
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'QSLMaster/1.2'
+            'User-Agent': get_user_agent()
         })
         self.logger = logging.getLogger(__name__)
     
