@@ -152,7 +152,23 @@ python qslmaster_cli/validate_adif.py qsl.adi
 
 Unit tests for callsign extraction:
 ```bash
-python -m qslmaster_cli.callsign_utils
+python -m qslmaster_cli.callsign_selftest
+```
+
+QRZ bureau verification self-test (requires `qrz_username`/`qrz_password` in `config.json`):
+```bash
+python -m qslmaster_cli.qrz_selftest --config config.json
+```
+
+QRZ bureau verification with additional random callsigns (default 10 when `--random` has no value):
+```bash
+python -m qslmaster_cli.qrz_selftest --config config.json --random
+python -m qslmaster_cli.qrz_selftest --config config.json --random 35
+```
+
+PZK bureau lookup self-test:
+```bash
+python -m qslmaster_cli.pzk_selftest
 ```
 
 This runs basic tests for the `extract_homecall()` function which handles various callsign formats including slashed callsigns (e.g., `DL/SQ5FOX/M/DL` → `SQ5FOX`).
