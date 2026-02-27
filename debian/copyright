@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: qslmaster
+Source: https://github.com/lycanananas/QSLMaster
+
+Files: *
+Copyright: 2026 Adrian SQ5FOX Grzeca
+License: GPL-3.0-only
+
+License: GPL-3.0-only
+ This package is distributed under the GNU General Public License v3.0.
+ On Debian systems, the full text of the license can be found in
+ /usr/share/common-licenses/GPL-3.

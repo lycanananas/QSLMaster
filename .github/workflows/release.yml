@@ -1,0 +1,188 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate_tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must match vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - run: |
+          git fetch origin master --depth=1
+          git merge-base --is-ancestor "$GITHUB_SHA" "origin/master"
+
+  build_deb:
+    needs: validate_tag
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --target vendor pyhamtools==0.12.0 'adif-io>=0.2.5'
+
+      - run: |
+          VERSION="${{ needs.validate_tag.outputs.version }}"
+          DISTRO="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+          PKGROOT="pkgroot"
+
+          install -d "$PKGROOT/DEBIAN"
+          install -d "$PKGROOT/usr/lib/qslmaster"
+          install -d "$PKGROOT/usr/lib/qslmaster/vendor"
+
+          pkg_dirs=(
+            qslmaster_cli
+            qslmaster_gui
+            qslmaster_gui/dialogs
+            qslmaster_gui/resources
+            qslmaster_gui/ui
+            qslmaster_gui/utils
+            qslmaster_gui/widgets
+            qslmaster_gui/workers
+          )
+
+          for d in "${pkg_dirs[@]}"; do
+            install -d "$PKGROOT/usr/lib/qslmaster/$d"
+            if compgen -G "$d/*.py" > /dev/null; then
+              install -m644 "$d"/*.py "$PKGROOT/usr/lib/qslmaster/$d/"
+            fi
+          done
+
+          if compgen -G qslmaster_gui/resources/*.png > /dev/null; then
+            install -m644 qslmaster_gui/resources/*.png "$PKGROOT/usr/lib/qslmaster/qslmaster_gui/resources/"
+          fi
+
+          cp -a vendor/. "$PKGROOT/usr/lib/qslmaster/vendor/"
+
+          install -Dm755 packaging/qslmaster "$PKGROOT/usr/bin/qslmaster"
+          install -Dm755 packaging/qslmaster-cli "$PKGROOT/usr/bin/qslmaster-cli"
+          install -Dm644 packaging/qslmaster.desktop "$PKGROOT/usr/share/applications/qslmaster.desktop"
+          install -Dm644 qslmaster_gui/resources/icon.png "$PKGROOT/usr/share/pixmaps/qslmaster.png"
+          install -Dm644 LICENSE.md "$PKGROOT/usr/share/licenses/qslmaster/LICENSE"
+          install -d "$PKGROOT/usr/share/doc/qslmaster"
+
+          install -Dm644 debian/control "$PKGROOT/DEBIAN/control"
+          sed -i "s/__VERSION__/${VERSION}/g" "$PKGROOT/DEBIAN/control"
+          install -Dm644 debian/changelog "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
+          sed -i "s/__VERSION__/${VERSION}/g" "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
+          sed -i "s/__DATE_RFC2822__/$(date -R)/g" "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
+          gzip -n -f "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
+          install -Dm644 debian/copyright "$PKGROOT/usr/share/doc/qslmaster/copyright"
+
+          chmod 0755 "$PKGROOT/DEBIAN"
+          dpkg-deb --build "$PKGROOT" "qslmaster_${VERSION}-1_${DISTRO}_amd64.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qslmaster-${{ needs.validate_tag.outputs.version }}-${{ matrix.os }}-deb
+          path: qslmaster_${{ needs.validate_tag.outputs.version }}-1_*_amd64.deb
+
+  build_windows:
+    needs: validate_tag
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-gui.txt
+          pip install pyinstaller
+
+      - run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --name qslmaster qslmaster_gui/main.py
+          pyinstaller --noconfirm --clean --onefile --name qslmaster-cli qslmaster_cli/main.py
+
+      - shell: pwsh
+        run: |
+          $version = '${{ needs.validate_tag.outputs.version }}'
+          $out = "qslmaster-$version-windows-x86_64"
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          Copy-Item dist/qslmaster.exe "$out/qslmaster.exe"
+          Copy-Item dist/qslmaster-cli.exe "$out/qslmaster-cli.exe"
+          Compress-Archive -Path "$out/*" -DestinationPath "$out.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64
+          path: qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64.zip
+
+  build_arch:
+    needs: validate_tag
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git python python-pip
+
+      - run: |
+          VERSION="${{ needs.validate_tag.outputs.version }}"
+          sed "s/__VERSION__/${VERSION}/g" arch/PKGBUILD.release > PKGBUILD.release
+          makepkg -p PKGBUILD.release --syncdeps --cleanbuild --noconfirm
+
+      - run: |
+          VERSION="${{ needs.validate_tag.outputs.version }}"
+          mkdir -p out
+          cp -v qslmaster-*.pkg.tar.zst out/
+          cp -v qslmaster-*.pkg.tar.zst.sig out/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qslmaster-${{ needs.validate_tag.outputs.version }}-arch
+          path: out/*
+
+  publish_release:
+    needs: [validate_tag, build_deb, build_windows, build_arch]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - run: |
+          cd artifacts
+          find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mapfile -d '' files < <(find artifacts -type f -print0 | sort -z)
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+            --title "QSLMaster ${{ needs.validate_tag.outputs.version }}" \
+            --generate-notes

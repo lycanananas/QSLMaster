@@ -195,7 +195,9 @@ python -m build
 
 Requires `makepkg`:
 ```bash
-makepkg -si
+VERSION=1.2.3
+sed "s/__VERSION__/${VERSION}/g" arch/PKGBUILD.release > PKGBUILD
+makepkg -p PKGBUILD -si
 ```
 
 ### Build GUI Standalone (PyInstaller)
