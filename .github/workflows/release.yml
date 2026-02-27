@@ -114,7 +114,7 @@ jobs:
           install -Dm644 debian/copyright "$PKGROOT/usr/share/doc/qslmaster/copyright"
 
           chmod 0755 "$PKGROOT/DEBIAN"
-          dpkg-deb --build "$PKGROOT" "qslmaster_${VERSION}-1_${DISTRO}_amd64.deb"
+          dpkg-deb --root-owner-group --build "$PKGROOT" "qslmaster_${VERSION}-1_${DISTRO}_amd64.deb"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -136,7 +136,7 @@ jobs:
           pip install -r requirements-gui.txt
           pip install pyinstaller pillow
 
-        - run: |
+      - run: |
           python - << 'PY'
           from PIL import Image
           image = Image.open('qslmaster_gui/resources/icon.png')
