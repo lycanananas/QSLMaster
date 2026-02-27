@@ -2,12 +2,12 @@
 
 <img src="./logo.png" width="150">
 
-Download QSO data from Wavelog and prepare ADIF output and printable QSL labels. The project includes both a CLI and a GUI, sharing the same processing core.
+Download QSO data from Wavelog or a local ADIF file and prepare ADIF output and printable QSL labels. The project includes both a CLI and a GUI, sharing the same processing core.
 
 ## Features
 
 - CLI and GUI based workflows
-- ADIF download and parsing
+- ADIF loading/parsing from Wavelog API or local file
 - Date range filtering
 - QSL bureau verification via QRZ.com (optional)
 - Country specific processing for Poland (PZK lookup)
@@ -17,7 +17,7 @@ Download QSO data from Wavelog and prepare ADIF output and printable QSL labels.
 ## Requirements
 
 - Python 3.7+
-- Wavelog 2.0.0 or higher
+- Wavelog 2.0.0 or higher (only when using `source: wavelog`)
 - CLI dependencies in requirements.txt
 - GUI dependencies in requirements-gui.txt
 
@@ -85,8 +85,10 @@ cp config.example.json config.json
 ```
 
 2. Edit config.json and fill in:
-  - `api_key` - Your API key from Wavelog
-  - `wavelog_url` - URL of your Wavelog instance (e.g. `https://wavelog.example.com`, `https://wavelog.example.com/index.php`, or `https://wavelog.example.com/index.php/api`)
+  - `source` - Data source: `wavelog` or `adif_file`
+  - `api_key` - Your API key from Wavelog (required for `source: wavelog`)
+  - `wavelog_url` - URL of your Wavelog instance (required for `source: wavelog`)
+  - `adif_file_path` - Path to input ADIF file (optional in config; required at runtime for `source: adif_file` unless provided with `--adif-source`)
   - `qrz_username` - Your QRZ.com username (optional)
   - `qrz_password` - Your QRZ.com password (optional)
   - `ignored_dxcc` - List of DXCC IDs to skip during QSL generation (optional)
@@ -94,8 +96,10 @@ cp config.example.json config.json
 Example config.json:
 ```json
 {
+  "source": "wavelog",
   "api_key": "your_api_key_here",
   "wavelog_url": "https://wavelog.example.com",
+  "adif_file_path": "/path/to/input.adi",
   "qrz_username": "your_qrz_username",
   "qrz_password": "your_qrz_password",
   "ignored_dxcc": [15, 54]
@@ -109,6 +113,8 @@ QRZ.com credentials are optional. If not provided, bureau verification for non-P
 ### GUI configuration and credentials
 
 The GUI stores configuration in the user profile and keeps secrets in the system keyring.
+
+For `source: adif_file` in GUI, selecting an ADIF file in configuration is optional. The file is selected when clicking `Generate QSLs (ADIF)`.
 
 Config file locations:
 - Linux: `~/.config/qslmaster/config.json`
@@ -134,6 +140,16 @@ python qslmaster_gui/main.py
 Download all contacts:
 ```bash
 python qslmaster_cli/main.py --config config.json -o output.adif
+```
+
+Use local ADIF file source:
+```bash
+python qslmaster_cli/main.py --config config.json --source adif_file --adif-source ./input.adi -o output.adif
+```
+
+List stations (Wavelog source only):
+```bash
+python qslmaster_cli/main.py --config config.json --source wavelog --list-stations-only
 ```
 
 Filter by date range:
@@ -209,8 +225,15 @@ This runs basic tests for the `extract_homecall()` function which handles variou
 ### Build CLI Package
 
 ```bash
-pip install pyinstaller
-pyinstaller --onefile --name qslmaster-cli qslmaster_cli/main.py
+python -m pip install --upgrade pip
+pip install -r requirements-gui.txt
+pip install pyinstaller pillow
+
+# Optional (for icon generation used below)
+python packaging/windows/build_icon.py
+
+# Windows PowerShell/CMD variant (use ; in --add-data)
+pyinstaller --noconfirm --clean --onefile --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --collect-data pyhamtools --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster.ico;." --name qslmaster-cli packaging/windows/entry_cli.py
 ```
 
 ### Build Arch Linux Package
@@ -225,8 +248,15 @@ makepkg -p PKGBUILD.release -si
 ### Build GUI Standalone (PyInstaller)
 
 ```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed qslmaster_gui/main.py
+python -m pip install --upgrade pip
+pip install -r requirements-gui.txt
+pip install pyinstaller pillow
+
+# Optional (for icon generation used below)
+python packaging/windows/build_icon.py
+
+# Windows PowerShell/CMD variant (use ; in --add-data)
+pyinstaller --noconfirm --clean --onefile --windowed --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --collect-data pyhamtools --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster.ico;." --name qslmaster packaging/windows/entry_gui.py
 ```
 
 The executable will be in `dist/` directory.

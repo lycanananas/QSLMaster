@@ -8,6 +8,9 @@ class ConfigError(Exception):
     pass
 
 
+ALLOWED_SOURCES = {'wavelog', 'adif_file'}
+
+
 def load_config(config_path: str) -> Dict[str, Any]:
     config_file = Path(config_path)
     
@@ -25,13 +28,21 @@ def load_config(config_path: str) -> Dict[str, Any]:
     except IOError as e:
         raise ConfigError(f"Error reading configuration file: {e}")
     
-    required_fields = ['api_key', 'wavelog_url']
-    optional_fields = ['qrz_username', 'qrz_password', 'logo_path', 'ignored_dxcc']
-    
-    missing_fields = [field for field in required_fields if field not in config]
-    if missing_fields:
-        raise ConfigError(f"Missing required configuration fields: {', '.join(missing_fields)}")
-    
+    source = str(config.get('source', 'wavelog')).strip().lower()
+    if source in {'adif', 'file'}:
+        source = 'adif_file'
+    config['source'] = source
+
+    optional_fields = [
+        'api_key',
+        'wavelog_url',
+        'adif_file_path',
+        'qrz_username',
+        'qrz_password',
+        'logo_path',
+        'ignored_dxcc',
+    ]
+
     for field in optional_fields:
         if field not in config:
             if field == 'ignored_dxcc':
@@ -43,15 +54,30 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
 
 def validate_config(config: Dict[str, Any]) -> bool:
-    if not config.get('api_key') or not isinstance(config['api_key'], str):
-        raise ConfigError("api_key must be a non-empty string")
-    
-    if not config.get('wavelog_url') or not isinstance(config['wavelog_url'], str):
-        raise ConfigError("wavelog_url must be a non-empty string")
-    
-    url = config['wavelog_url'].strip()
-    if not url.startswith(('http://', 'https://')):
-        raise ConfigError("wavelog_url must start with http:// or https://")
+    source = str(config.get('source', 'wavelog')).strip().lower()
+    if source in {'adif', 'file'}:
+        source = 'adif_file'
+    if source not in ALLOWED_SOURCES:
+        raise ConfigError("source must be one of: wavelog, adif_file")
+    config['source'] = source
+
+    if source == 'wavelog':
+        if not config.get('api_key') or not isinstance(config['api_key'], str):
+            raise ConfigError("api_key must be a non-empty string for source=wavelog")
+
+        if not config.get('wavelog_url') or not isinstance(config['wavelog_url'], str):
+            raise ConfigError("wavelog_url must be a non-empty string for source=wavelog")
+
+        url = config['wavelog_url'].strip()
+        if not url.startswith(('http://', 'https://')):
+            raise ConfigError("wavelog_url must start with http:// or https://")
+    elif source == 'adif_file':
+        adif_file_path = str(config.get('adif_file_path', '')).strip()
+        if adif_file_path:
+            adif_file = Path(adif_file_path)
+            if not adif_file.exists() or not adif_file.is_file():
+                raise ConfigError(f"adif_file_path does not exist or is not a file: {adif_file_path}")
+            config['adif_file_path'] = str(adif_file)
     
     if not isinstance(config.get('qrz_username'), str):
         raise ConfigError("qrz_username must be a string")

@@ -210,7 +210,7 @@ class QSLMasterMainWindow(QMainWindow):
             self.processing_tab.current_config and
             self.processing_tab.current_config.get('id') == deleted_config_id
         ):
-            self.processing_tab.current_config = None
+            self.processing_tab.set_config(None)
             self.statusBar().showMessage(
                 "Configuration deleted. Please select another configuration."
             )
@@ -218,7 +218,7 @@ class QSLMasterMainWindow(QMainWindow):
     def _on_config_created(self, created_config_id: str):
         config = get_config(created_config_id)
         if config:
-            self.processing_tab.current_config = config
+            self.processing_tab.set_config(config)
             self.statusBar().showMessage(
                 f"Configuration created: {config.get('name', created_config_id[:8])}"
             )
@@ -250,6 +250,12 @@ class QSLMasterMainWindow(QMainWindow):
                 self.config_combo.setCurrentIndex(idx)
 
         self.config_combo.currentIndexChanged.connect(self.on_config_changed)
+
+        selected_id = self.config_combo.currentData()
+        if selected_id:
+            selected_config = get_config(selected_id)
+            if selected_config:
+                self.processing_tab.set_config(selected_config)
 
     def closeEvent(self, event):
         if (

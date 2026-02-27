@@ -70,6 +70,12 @@ class QSLProcessor:
     def _log(self, level: str, message: str) -> None:
         self.log_callback(level, message)
 
+    def get_source_type(self) -> str:
+        source = str(self.config.get('source', 'wavelog')).strip().lower()
+        if source in {'adif', 'file'}:
+            return 'adif_file'
+        return source
+
     @staticmethod
     def _get_country_file_paths() -> Tuple[Path, Path]:
         cache_dir = Path.home() / '.cache' / 'qslmaster'
@@ -324,6 +330,15 @@ class QSLProcessor:
             return qsos
         except Exception as e:
             raise QSLProcessorError(f"ADIF parsing error: {e}")
+
+    def load_adif_from_file(self, adif_file_path: str) -> str:
+        path = Path(str(adif_file_path).strip())
+        if not path.exists() or not path.is_file():
+            raise QSLProcessorError(f"ADIF file does not exist or is not a file: {adif_file_path}")
+        try:
+            return path.read_text(encoding='utf-8')
+        except Exception as e:
+            raise QSLProcessorError(f"Failed to read ADIF file {adif_file_path}: {e}")
     
     @staticmethod
     def parse_date_arg(date_str: str) -> Optional[datetime]:
@@ -575,35 +590,52 @@ class QSLProcessor:
     ) -> Dict[str, Any]:
         try:
             self._progress("Starting QSL processing...")
-            self.api_client = WavelogAPI(
-                base_url=self.config['wavelog_url'],
-                api_key=self.config['api_key']
-            )
-            
-            if not self.check_api_health():
-                raise QSLProcessorError("Wavelog API health check failed")
+            source = self.get_source_type()
+            stations = []
+            selected_station_ids = None
 
-            stations = self.list_stations()
+            if source == 'wavelog':
+                self.api_client = WavelogAPI(
+                    base_url=self.config['wavelog_url'],
+                    api_key=self.config['api_key']
+                )
 
-            if list_stations_only:
-                self._log('INFO', "Station list mode enabled. Skipping QSO analysis.")
-                for station in stations:
-                    status = "(active)" if station['station_active'] == '1' else "(inactive)"
-                    self._log('INFO', f"  Station {station['station_id']}: {station['station_callsign']} - {station['station_profile_name']} {status}")
-                return {
-                    'success': True,
-                    'qsl_qsos': [],
-                    'output_adif': None,
-                    'output_pdf': None,
-                    'stats': {'stations': len(stations)},
-                    'stations': stations,
-                }
+                if not self.check_api_health():
+                    raise QSLProcessorError("Wavelog API health check failed")
 
-            selected_station_ids = self.resolve_station_ids(stations, station_selector)
-            if selected_station_ids:
-                self._log('INFO', f"Selected station_ids={selected_station_ids} for processing")
+                stations = self.list_stations()
+
+                if list_stations_only:
+                    self._log('INFO', "Station list mode enabled. Skipping QSO analysis.")
+                    for station in stations:
+                        status = "(active)" if station['station_active'] == '1' else "(inactive)"
+                        self._log('INFO', f"  Station {station['station_id']}: {station['station_callsign']} - {station['station_profile_name']} {status}")
+                    return {
+                        'success': True,
+                        'qsl_qsos': [],
+                        'output_adif': None,
+                        'output_pdf': None,
+                        'stats': {'stations': len(stations), 'source': source},
+                        'stations': stations,
+                    }
+
+                selected_station_ids = self.resolve_station_ids(stations, station_selector)
+                if selected_station_ids:
+                    self._log('INFO', f"Selected station_ids={selected_station_ids} for processing")
+                else:
+                    self._log('INFO', "Selected all stations for processing")
             else:
-                self._log('INFO', "Selected all stations for processing")
+                if list_stations_only:
+                    self._log('INFO', "Station list mode is only available for source=wavelog")
+                    return {
+                        'success': True,
+                        'qsl_qsos': [],
+                        'output_adif': None,
+                        'output_pdf': None,
+                        'stats': {'stations': 0, 'source': source},
+                        'stations': [],
+                    }
+                self._log('INFO', f"Using ADIF file source: {self.config.get('adif_file_path', '')}")
             
             self.qrz_api = None
             if self.config.get('qrz_username') and self.config.get('qrz_password'):
@@ -614,10 +646,17 @@ class QSLProcessor:
                     self._log('WARNING', f"Failed to initialize QRZ API: {e}")
             
             self.setup_callinfo()
-            self._progress("Downloading ADIF data...")
-            adif_content, qso_count = self.download_adif(station_ids=selected_station_ids)
+            if source == 'wavelog':
+                self._progress("Downloading ADIF data...")
+                adif_content, qso_count = self.download_adif(station_ids=selected_station_ids)
+            else:
+                self._progress("Loading ADIF data from file...")
+                adif_content = self.load_adif_from_file(self.config.get('adif_file_path', ''))
+                qso_count = 0
             self._progress("Parsing ADIF data...")
             qsos = self.parse_adif_content(adif_content)
+            if source == 'adif_file':
+                qso_count = len(qsos)
             self._log('INFO', f"ADIF data loaded with {qso_count} QSOs, {len(qsos)} parsed successfully")
             
             if from_date or to_date:

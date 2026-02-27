@@ -28,8 +28,74 @@ class ProcessingTab(QWidget):
         self.pzk_disabled = False
         self.init_ui()
 
+    @staticmethod
+    def _get_source_type(config) -> str:
+        source = str((config or {}).get('source', 'wavelog')).strip().lower()
+        if source in {'adif', 'file'}:
+            return 'adif_file'
+        return source
+
+    def _update_process_button_label(self):
+        if not hasattr(self, 'process_button'):
+            return
+        source = self._get_source_type(self.current_config)
+        if source == 'adif_file':
+            self.process_button.setText("Generate QSLs (ADIF)")
+        else:
+            self.process_button.setText("Generate QSLs (Wavelog)")
+
+    def _select_adif_source_file(self, suggested_path: str = '') -> str:
+        start_path = str(suggested_path or '').strip()
+        if start_path:
+            path_obj = Path(start_path)
+            if path_obj.exists() and path_obj.is_file():
+                start_path = str(path_obj)
+            else:
+                start_path = str(Path.home())
+        else:
+            start_path = str(Path.home())
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select ADIF Source File",
+            start_path,
+            "ADIF Files (*.adi *.adif);;All Files (*)"
+        )
+        return str(file_path or '').strip()
+
+    def _set_station_controls_for_adif(self):
+        self.station_list.clear()
+        spacer_item = QListWidgetItem(" ")
+        spacer_item.setFlags(Qt.ItemFlag.NoItemFlags)
+        self.station_list.addItem(spacer_item)
+        info_item = QListWidgetItem("Available only for Wavelog")
+        info_font = QFont()
+        info_font.setPointSize(12)
+        info_font.setBold(True)
+        info_item.setFont(info_font)
+        info_item.setFlags(Qt.ItemFlag.NoItemFlags)
+        self.station_list.addItem(info_item)
+        self.all_stations_check.setChecked(True)
+        self.all_stations_check.setEnabled(False)
+        self.station_list.setEnabled(False)
+        self.stations_loaded = False
+
+    def _set_station_controls_for_wavelog(self):
+        self.all_stations_check.setEnabled(True)
+
     def set_config(self, config):
         self.current_config = config
+        self._update_process_button_label()
+        source = self._get_source_type(config)
+        is_wavelog = source == 'wavelog'
+        self.refresh_station_btn.setEnabled(is_wavelog)
+
+        if not is_wavelog:
+            self._set_station_controls_for_adif()
+            return
+
+        self._set_station_controls_for_wavelog()
+
         if not config or not config.get('api_key') or not config.get('wavelog_url'):
             self.station_list.clear()
             self.all_stations_check.setChecked(True)
@@ -37,7 +103,12 @@ class ProcessingTab(QWidget):
             self.stations_loaded = False
         else:
             self.load_station_list(config)
+
     def load_station_list(self, config):
+        if self._get_source_type(config) != 'wavelog':
+            self._set_station_controls_for_adif()
+            return
+        self._set_station_controls_for_wavelog()
         logger.info("Loading station list from Wavelog...")
         self.station_list.clear()
         try:
@@ -62,7 +133,7 @@ class ProcessingTab(QWidget):
             self.station_list.setEnabled(False)
             self.stations_loaded = False
     def on_refresh_station_list(self):
-        if self.current_config:
+        if self.current_config and self._get_source_type(self.current_config) == 'wavelog':
             self.load_station_list(self.current_config)
 
     def init_ui(self):
@@ -193,6 +264,7 @@ class ProcessingTab(QWidget):
         process_button.clicked.connect(self.start_processing)
         layout.addWidget(process_button)
         self.process_button = process_button
+        self._update_process_button_label()
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(True)
@@ -395,24 +467,39 @@ class ProcessingTab(QWidget):
             return
 
         config_to_use = self.current_config.copy()
+        source = self._get_source_type(config_to_use)
 
-        if not config_to_use.get('api_key'):
-            QMessageBox.warning(
-                self,
-                "Configuration Error",
-                "API Key not found. Please configure it in Settings"
-            )
-            return
+        if source == 'wavelog':
+            if not config_to_use.get('api_key'):
+                QMessageBox.warning(
+                    self,
+                    "Configuration Error",
+                    "API Key not found. Please configure it in Settings"
+                )
+                return
 
-        if not config_to_use.get('wavelog_url'):
-            QMessageBox.warning(
-                self,
-                "Configuration Error",
-                "Wavelog URL not found. Please configure it in Settings"
-            )
-            return
+            if not config_to_use.get('wavelog_url'):
+                QMessageBox.warning(
+                    self,
+                    "Configuration Error",
+                    "Wavelog URL not found. Please configure it in Settings"
+                )
+                return
+        else:
+            adif_path = self._select_adif_source_file(config_to_use.get('adif_file_path', ''))
+            if not adif_path:
+                return
+            adif_file = Path(adif_path)
+            if not adif_file.exists() or not adif_file.is_file():
+                QMessageBox.warning(
+                    self,
+                    "Configuration Error",
+                    f"ADIF file does not exist: {adif_path}"
+                )
+                return
+            config_to_use['adif_file_path'] = str(adif_file)
 
-        if not self.stations_loaded:
+        if source == 'wavelog' and not self.stations_loaded:
             self.load_station_list(config_to_use)
 
         from_date = None
@@ -430,7 +517,7 @@ class ProcessingTab(QWidget):
             return
 
         selected_stations = []
-        if self.all_stations_check.isChecked():
+        if source != 'wavelog' or self.all_stations_check.isChecked():
             selected_stations = ['all']
         else:
             for i in range(self.station_list.count()):
@@ -499,9 +586,20 @@ class ProcessingTab(QWidget):
             stats_text = "Processing completed successfully!\n\n"
             stats_text += f"Total QSOs to send: {result['stats'].get('total_to_send', 0)}\n"
 
+            ignored_dxcc_stats = result['stats'].get('ignored_dxcc')
+
             for country, stats in result['stats'].items():
-                if country != 'total_to_send' and isinstance(stats, dict):
+                if country in {'total_to_send', 'ignored_dxcc'}:
+                    continue
+                if isinstance(stats, dict):
                     stats_text += f"{country}: {stats.get('to_send', 0)}/{stats.get('total', 0)}\n"
+
+            if isinstance(ignored_dxcc_stats, dict):
+                ignored_ids = ignored_dxcc_stats.get('ids', []) or []
+                ignored_ids_text = ', '.join(str(value) for value in ignored_ids)
+                skipped = int(ignored_dxcc_stats.get('skipped', 0) or 0)
+                stats_text += f"Ignored DXCC: {skipped}"
+                stats_text += "\n"
 
             stats_text += f"\nOutput files:\n"
             stats_text += f"  ADIF: {result['output_adif']}\n"

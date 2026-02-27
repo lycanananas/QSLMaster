@@ -305,6 +305,8 @@ def create_config(
     api_key: str,
     qrz_password: Optional[str] = None,
     ignored_dxcc: Optional[List[Any]] = None,
+    source: str = 'wavelog',
+    adif_file_path: str = '',
 ) -> Optional[str]:
     config_id = str(uuid.uuid4())
     
@@ -317,6 +319,8 @@ def create_config(
         'wavelog_url': wavelog_url,
         'qrz_username': qrz_username,
         'ignored_dxcc': normalized_ignored_dxcc,
+        'source': str(source or 'wavelog').strip().lower(),
+        'adif_file_path': str(adif_file_path or '').strip(),
     }
     
     metadata['configs'].append(config_entry)
@@ -350,6 +354,13 @@ def get_config(config_id: str) -> Optional[Dict[str, Any]]:
     
     config = config_entry.copy()
     config['ignored_dxcc'] = _normalize_ignored_dxcc(config.get('ignored_dxcc', []))
+    source = str(config.get('source', 'wavelog')).strip().lower()
+    if source in {'adif', 'file'}:
+        source = 'adif_file'
+    if source not in {'wavelog', 'adif_file'}:
+        source = 'wavelog'
+    config['source'] = source
+    config['adif_file_path'] = str(config.get('adif_file_path', '') or '').strip()
     
     api_key = keyring_handler.get_credential(f'qslmaster_config_{config_id}_api_key')
     if api_key:
@@ -374,6 +385,8 @@ def update_config(
     api_key: str,
     qrz_password: Optional[str] = None,
     ignored_dxcc: Optional[List[Any]] = None,
+    source: str = 'wavelog',
+    adif_file_path: str = '',
 ) -> bool:
     metadata = _load_configs_metadata()
     normalized_ignored_dxcc = _normalize_ignored_dxcc(ignored_dxcc)
@@ -384,6 +397,8 @@ def update_config(
             cfg['wavelog_url'] = wavelog_url
             cfg['qrz_username'] = qrz_username
             cfg['ignored_dxcc'] = normalized_ignored_dxcc
+            cfg['source'] = str(source or 'wavelog').strip().lower()
+            cfg['adif_file_path'] = str(adif_file_path or '').strip()
             break
     else:
         return False
