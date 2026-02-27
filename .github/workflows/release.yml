@@ -137,11 +137,7 @@ jobs:
           pip install pyinstaller pillow
 
       - run: |
-          python - << 'PY'
-          from PIL import Image
-          image = Image.open('qslmaster_gui/resources/icon.png')
-          image.save('qslmaster.ico', format='ICO', sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-          PY
+          python packaging/windows/build_icon.py
 
       - run: |
           pyinstaller --noconfirm --clean --onefile --windowed --icon qslmaster.ico --name qslmaster packaging/windows/entry_gui.py
