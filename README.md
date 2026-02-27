@@ -109,6 +109,7 @@ Example config.json:
 DXCC IDs `15` and `54` correspond to Asiatic Russia and European Russia.
 
 QRZ.com credentials are optional. If not provided, bureau verification for non-Poland stations is skipped.
+QRZ lookups require QRZ XML API access (premium subscription). Without premium access, QRZ lookup errors are treated as non-fatal and processing continues.
 
 ### GUI configuration and credentials
 
@@ -197,7 +198,7 @@ Unit tests for callsign extraction:
 python -m qslmaster_cli.callsign_selftest
 ```
 
-QRZ bureau verification self-test (requires `qrz_username`/`qrz_password` in `config.json`):
+QRZ bureau verification self-test (requires `qrz_username`/`qrz_password` in `config.json` and QRZ XML API premium access):
 ```bash
 python -m qslmaster_cli.qrz_selftest --config config.json
 ```

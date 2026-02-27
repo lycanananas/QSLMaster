@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QComboBox, QMessageBox, QFileDialog,
-    QListWidget, QListWidgetItem, QRadioButton
+    QListWidget, QListWidgetItem, QRadioButton, QSizePolicy
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen
@@ -59,6 +59,7 @@ class ConfigDialog(QDialog):
         source_layout.addWidget(self.source_wavelog_radio)
         source_layout.addWidget(self.source_adif_file_radio)
         source_group.setLayout(source_layout)
+        source_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         left_column.addWidget(source_group)
 
         self.wavelog_group = QGroupBox("Wavelog Configuration")
@@ -76,6 +77,7 @@ class ConfigDialog(QDialog):
         wavelog_layout.addWidget(self.api_key_input)
 
         self.wavelog_group.setLayout(wavelog_layout)
+        self.wavelog_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         left_column.addWidget(self.wavelog_group)
 
         qrz_group = QGroupBox("QRZ.com Configuration (Optional)")
@@ -92,8 +94,17 @@ class ConfigDialog(QDialog):
         self.qrz_password_input.setPlaceholderText("Your QRZ password (optional)")
         qrz_layout.addWidget(self.qrz_password_input)
 
+        qrz_note = QLabel(
+            "QRZ XML API access (premium subscription) is required for bureau lookups. "
+            "Without premium access, lookup errors are treated as non-fatal and processing continues."
+        )
+        qrz_note.setWordWrap(True)
+        qrz_layout.addWidget(qrz_note)
+
         qrz_group.setLayout(qrz_layout)
+        qrz_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         left_column.addWidget(qrz_group)
+        left_column.addStretch()
 
         logo_group = QGroupBox("QSL Logo (Optional)")
         logo_layout = QVBoxLayout()
@@ -123,7 +134,6 @@ class ConfigDialog(QDialog):
         logo_layout.addWidget(self.logo_preview)
         
         logo_group.setLayout(logo_layout)
-        left_column.addWidget(logo_group)
 
         dxcc_group = QGroupBox("Ignored DXCC (Optional)")
         dxcc_layout = QVBoxLayout()
@@ -152,6 +162,8 @@ class ConfigDialog(QDialog):
 
         right_column = QVBoxLayout()
         right_column.addWidget(dxcc_group)
+        right_column.addWidget(logo_group)
+        right_column.addStretch()
 
         content_layout.addLayout(left_column, 1)
         content_layout.addLayout(right_column, 1)
