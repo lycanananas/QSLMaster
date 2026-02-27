@@ -37,7 +37,25 @@ def main():
     app.setApplicationVersion(get_version())
     app.setDesktopFileName("qslmaster")
 
+    icon_candidates = [
+        Path('/usr/share/pixmaps/qslmaster.png'),
+        Path(__file__).resolve().parent / 'resources' / 'icon.png',
+        Path(__file__).resolve().parent / 'resources' / 'icon.ico',
+    ]
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        icon_candidates.append(Path(meipass) / 'qslmaster_gui' / 'resources' / 'icon.png')
+        icon_candidates.append(Path(meipass) / 'qslmaster_gui' / 'resources' / 'icon.ico')
+        icon_candidates.append(Path(meipass) / 'icon.png')
+        icon_candidates.append(Path(meipass) / 'qslmaster.ico')
+
+    icon_path = next((candidate for candidate in icon_candidates if candidate.exists()), None)
+    if icon_path:
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     window = QSLMasterMainWindow()
+    if icon_path:
+        window.setWindowIcon(QIcon(str(icon_path)))
     window.show()
     
     def signal_handler(signum, frame):

@@ -140,8 +140,8 @@ jobs:
           python packaging/windows/build_icon.py
 
       - run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --icon qslmaster.ico --name qslmaster packaging/windows/entry_gui.py
-          pyinstaller --noconfirm --clean --onefile --icon qslmaster.ico --name qslmaster-cli packaging/windows/entry_cli.py
+          pyinstaller --noconfirm --clean --onefile --windowed --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --collect-data pyhamtools --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster.ico;." --name qslmaster packaging/windows/entry_gui.py
+          pyinstaller --noconfirm --clean --onefile --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --collect-data pyhamtools --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster.ico;." --name qslmaster-cli packaging/windows/entry_cli.py
 
       - shell: pwsh
         run: |

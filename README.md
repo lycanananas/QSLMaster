@@ -55,6 +55,26 @@ pip install -r requirements.txt
 pip install -r requirements-gui.txt
 ```
 
+## Install from Releases
+
+Prebuilt packages and binaries are available on GitHub Releases:
+
+https://github.com/lycanananas/QSLMaster/releases
+
+- Ubuntu (`.deb`):
+```bash
+sudo apt install ./qslmaster_<VERSION>-1_<ubuntu-codename>_amd64.deb
+```
+
+- Arch Linux (`.pkg.tar.zst`):
+```bash
+sudo pacman -U ./qslmaster-<VERSION>-1-x86_64.pkg.tar.zst
+```
+
+- Windows:
+  - Installer artifact: `*_installer` (`...-setup.exe`)
+  - Portable binaries artifact: `*_no_installer` (`.zip`)
+
 ## Configuration
 
 ### CLI configuration file

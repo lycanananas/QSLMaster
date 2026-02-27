@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -23,9 +24,23 @@ class QSLMasterMainWindow(QMainWindow):
         super().__init__()
         self.setObjectName("qslmaster")
         self.setWindowTitle("QSLMaster")
-        
-        system_icon_path = Path('/usr/share/pixmaps/qslmaster.png')
-        self.icon_path = system_icon_path if system_icon_path.exists() else Path(__file__).parent.parent / 'resources' / 'icon.png'
+
+        icon_candidates = [
+            Path('/usr/share/pixmaps/qslmaster.png'),
+            Path(__file__).resolve().parent.parent / 'resources' / 'icon.png',
+            Path(__file__).resolve().parent.parent / 'resources' / 'icon.ico',
+        ]
+
+        meipass = getattr(sys, '_MEIPASS', None)
+        if meipass:
+            icon_candidates.extend([
+                Path(meipass) / 'qslmaster_gui' / 'resources' / 'icon.png',
+                Path(meipass) / 'qslmaster_gui' / 'resources' / 'icon.ico',
+                Path(meipass) / 'icon.png',
+                Path(meipass) / 'qslmaster.ico',
+            ])
+
+        self.icon_path = next((candidate for candidate in icon_candidates if candidate.exists()), icon_candidates[1])
         
         self.config = None
         self.init_ui()
