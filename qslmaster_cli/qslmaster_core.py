@@ -1,11 +1,12 @@
 import logging
 import sys
 import json
+import plistlib
 import adif_io
 import requests
 import zipfile
 import io
-from typing import Optional, List, Dict, Any, Callable, Tuple
+from typing import Optional, List, Dict, Any, Callable, Tuple, Set
 from datetime import datetime
 from pathlib import Path
 from pyhamtools.callinfo import Callinfo
@@ -20,6 +21,7 @@ from .pdf_labels import generate_pdf_labels, preview_label_data
 
 
 logger = logging.getLogger(__name__)
+COUNTRY_FILE_MAX_AGE_DAYS = 3
 
 
 class QSLProcessorError(Exception):
@@ -43,6 +45,7 @@ class QSLProcessor:
         self.qrz_api = None
         self.callinfo = None
         self.lookup_library = None
+        self.dxcc_name_map = {269: 'Poland'}
     
     def _default_callback(self, message: str) -> None:
         logger.info(message)
@@ -66,66 +69,163 @@ class QSLProcessor:
     
     def _log(self, level: str, message: str) -> None:
         self.log_callback(level, message)
-    
-    def setup_callinfo(self) -> None:
-        self._progress("Initializing CallInfo...")
-        
+
+    @staticmethod
+    def _get_country_file_paths() -> Tuple[Path, Path]:
         cache_dir = Path.home() / '.cache' / 'qslmaster'
         cache_dir.mkdir(parents=True, exist_ok=True)
-        
         country_file = cache_dir / 'cty.plist'
         metadata_file = cache_dir / '.cty_metadata.json'
-        
+        return country_file, metadata_file
+
+    @classmethod
+    def ensure_country_file(cls, log_callback: Optional[Callable[[str, str], None]] = None) -> Path:
+        def emit(level: str, message: str) -> None:
+            if log_callback:
+                log_callback(level, message)
+            else:
+                level_map = {
+                    'INFO': logging.INFO,
+                    'DEBUG': logging.DEBUG,
+                    'WARNING': logging.WARNING,
+                    'ERROR': logging.ERROR,
+                }
+                logger.log(level_map.get(level, logging.INFO), message)
+
+        country_file, metadata_file = cls._get_country_file_paths()
         url = 'https://www.country-files.com/cty/download/cty_plist.zip'
-        download_success = False
-        
-        self._log('INFO', "Attempting to download fresh country file (plist)...")
+
+        if country_file.exists():
+            try:
+                if metadata_file.exists():
+                    with open(metadata_file, 'r') as file_handle:
+                        metadata = json.load(file_handle)
+
+                    downloaded_at_raw = metadata.get('downloaded_at')
+                    if downloaded_at_raw:
+                        downloaded_at = datetime.fromisoformat(str(downloaded_at_raw))
+                        age = datetime.now() - downloaded_at
+                        if age.days < COUNTRY_FILE_MAX_AGE_DAYS:
+                            emit('INFO', f'Using cached country file (metadata age: {age.days} day(s))')
+                            return country_file
+                        emit('INFO', f'Cached country file metadata is older than {COUNTRY_FILE_MAX_AGE_DAYS} days, attempting refresh...')
+                    else:
+                        emit('INFO', 'Country file metadata missing downloaded_at, attempting refresh...')
+                else:
+                    emit('INFO', 'Country file metadata not found, attempting refresh...')
+            except Exception:
+                emit('INFO', 'Could not read country file metadata, attempting refresh...')
+
+        emit('INFO', 'Attempting to download fresh country file (plist)...')
         try:
             response = requests.get(url, timeout=30)
             response.raise_for_status()
-            
+
             with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
                 plist_files = [f for f in zf.namelist() if f.endswith('.plist')]
                 if not plist_files:
-                    raise Exception("No .plist file found in ZIP")
+                    raise Exception('No .plist file found in ZIP')
                 plist_content = zf.read(plist_files[0])
-                with open(country_file, 'wb') as f:
-                    f.write(plist_content)
-                
-                metadata = {
-                    'downloaded_at': datetime.now().isoformat(),
-                    'url': url,
-                    'source': 'https://www.country-files.com/cty/'
-                }
-                with open(metadata_file, 'w') as f:
-                    json.dump(metadata, f, indent=2)
-                
-                self._log('INFO', f"Successfully downloaded country file from {url}")
-                download_success = True
-                
-        except Exception as e:
-            self._log('WARNING', f"Failed to download fresh country file: {e}")
-            self._log('INFO', "Attempting to use cached version as fallback...")
-            
+                with open(country_file, 'wb') as file_handle:
+                    file_handle.write(plist_content)
+
+            metadata = {
+                'downloaded_at': datetime.now().isoformat(),
+                'url': url,
+                'source': 'https://www.country-files.com/cty/'
+            }
+            with open(metadata_file, 'w') as file_handle:
+                json.dump(metadata, file_handle, indent=2)
+
+            emit('INFO', f'Successfully downloaded country file from {url}')
+            return country_file
+        except Exception as exc:
+            emit('WARNING', f'Failed to download fresh country file: {exc}')
+            emit('INFO', 'Attempting to use cached version as fallback...')
+
             if not country_file.exists():
-                raise QSLProcessorError("Country file unavailable - download failed and no cached version found")
-            
+                raise QSLProcessorError('Country file unavailable - download failed and no cached version found')
+
             if metadata_file.exists():
                 try:
-                    with open(metadata_file, 'r') as f:
-                        metadata = json.load(f)
-                        download_time = metadata.get('downloaded_at', 'unknown')
-                        self._log('WARNING', f"Using cached country file from {download_time}")
-                except:
-                    self._log('WARNING', "Using cached country file (metadata unavailable)")
+                    with open(metadata_file, 'r') as file_handle:
+                        metadata = json.load(file_handle)
+                    download_time = metadata.get('downloaded_at', 'unknown')
+                    emit('WARNING', f'Using cached country file from {download_time}')
+                except Exception:
+                    emit('WARNING', 'Using cached country file (metadata unavailable)')
             else:
-                self._log('WARNING', "Using cached country file (download date unknown)")
-        
+                emit('WARNING', 'Using cached country file (download date unknown)')
+
+            return country_file
+
+    @staticmethod
+    def _extract_dxcc_name_map_from_plist(data: Any) -> Dict[int, str]:
+        dxcc_map: Dict[int, str] = {}
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                adif_raw = None
+                name_raw = None
+
+                for key in ('adif', 'adif_id', 'dxcc', 'dxcc_id', 'ADIF'):
+                    if key in node:
+                        adif_raw = node.get(key)
+                        break
+
+                for key in ('entity', 'name', 'country', 'country_name', 'prefix', 'Country'):
+                    if key in node:
+                        name_raw = node.get(key)
+                        break
+
+                if adif_raw is not None and name_raw:
+                    try:
+                        dxcc_id = int(str(adif_raw).strip())
+                        name = str(name_raw).strip()
+                        if dxcc_id > 0 and name and dxcc_id not in dxcc_map:
+                            dxcc_map[dxcc_id] = name
+                    except Exception:
+                        pass
+
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        walk(data)
+        return dxcc_map
+
+    @classmethod
+    def list_all_dxcc_entities(
+        cls,
+        log_callback: Optional[Callable[[str, str], None]] = None,
+        country_file: Optional[Path] = None,
+    ) -> List[Dict[str, Any]]:
+        if country_file is None:
+            country_file = cls.ensure_country_file(log_callback=log_callback)
+        with open(country_file, 'rb') as file_handle:
+            plist_data = plistlib.load(file_handle)
+
+        dxcc_map = cls._extract_dxcc_name_map_from_plist(plist_data)
+        if 269 not in dxcc_map:
+            dxcc_map[269] = 'Poland'
+
+        entities = [{'id': dxcc_id, 'name': name} for dxcc_id, name in dxcc_map.items()]
+        entities.sort(key=lambda item: (item['name'].lower(), item['id']))
+        return entities
+    
+    def setup_callinfo(self) -> None:
+        self._progress("Initializing CallInfo...")
+
+        country_file = self.ensure_country_file(log_callback=self._log)
+
         try:
             self.lookup_library = LookupLib(lookuptype="countryfile", filename=str(country_file))
             self.callinfo = Callinfo(self.lookup_library)
-            status = "fresh" if download_success else "cached"
-            self._log('INFO', f"CallInfo initialized successfully (using {status} country file)")
+            entities = self.list_all_dxcc_entities(log_callback=self._log, country_file=country_file)
+            self.dxcc_name_map = {int(item['id']): str(item['name']) for item in entities}
+            self._log('INFO', f"CallInfo initialized successfully (DXCC entities loaded: {len(self.dxcc_name_map)})")
         except Exception as e:
             raise QSLProcessorError(f"Failed to initialize CallInfo: {e}")
     
@@ -316,15 +416,56 @@ class QSLProcessor:
         except Exception as e:
             raise QSLProcessorError(f"Mode filtering error: {e}")
     
-    @staticmethod
-    def get_dxcc_name(dxcc_id: int) -> str:
-        dxcc_names = {
-            269: "Poland",
-        }
+    def get_dxcc_name(self, dxcc_id: int) -> str:
         try:
-            return dxcc_names.get(int(dxcc_id), str(dxcc_id))
+            return self.dxcc_name_map.get(int(dxcc_id), str(dxcc_id))
         except Exception:
             return str(dxcc_id)
+
+    def get_ignored_dxcc_set(self) -> Set[int]:
+        ignored_values = self.config.get('ignored_dxcc', [])
+        if not ignored_values:
+            return set()
+
+        ignored_ids: Set[int] = set()
+        for value in ignored_values:
+            try:
+                dxcc_id = int(str(value).strip())
+                if dxcc_id > 0:
+                    ignored_ids.add(dxcc_id)
+            except Exception:
+                continue
+        return ignored_ids
+
+    def filter_qsos_by_ignored_dxcc(self, qsos: List) -> Tuple[List, int, Dict[int, int]]:
+        ignored_dxcc = self.get_ignored_dxcc_set()
+        if not ignored_dxcc:
+            return qsos, 0, {}
+
+        filtered_qsos = []
+        skipped_by_dxcc: Dict[int, int] = {}
+
+        for qso in qsos:
+            try:
+                fullcall = qso.get('CALL', '')
+                if not fullcall:
+                    filtered_qsos.append(qso)
+                    continue
+
+                homecall = self.callinfo.get_homecall(fullcall)
+                adif_id = self.callinfo.get_adif_id(homecall)
+                if adif_id in ignored_dxcc:
+                    skipped_by_dxcc[adif_id] = skipped_by_dxcc.get(adif_id, 0) + 1
+                    dxcc_name = self.get_dxcc_name(adif_id)
+                    self._log('INFO', f"Ignored QSO for callsign {fullcall} (homecall: {homecall}) by DXCC {dxcc_name} ({adif_id})")
+                    continue
+            except Exception:
+                pass
+
+            filtered_qsos.append(qso)
+
+        skipped_total = len(qsos) - len(filtered_qsos)
+        return filtered_qsos, skipped_total, skipped_by_dxcc
     
     def process_qsos_by_dxcc(self, qsos: List) -> Dict[int, Any]:
         dxcc_handlers = {
@@ -495,6 +636,18 @@ class QSLProcessor:
             skipped_count = len(qsos) - len(qsos_to_process)
             if skipped_count > 0:
                 self._log('INFO', f"Skipping {skipped_count} QSO(s) that already have QSL_SENT marked")
+
+            ignored_ids = sorted(self.get_ignored_dxcc_set())
+            if ignored_ids:
+                qsos_to_process, ignored_skipped_count, ignored_breakdown = self.filter_qsos_by_ignored_dxcc(qsos_to_process)
+                if ignored_skipped_count > 0:
+                    breakdown_values = [
+                        f"{self.get_dxcc_name(dxcc_id)}({dxcc_id})={count}"
+                        for dxcc_id, count in sorted(ignored_breakdown.items(), key=lambda item: item[0])
+                    ]
+                    self._log('INFO', f"Skipping {ignored_skipped_count} QSO(s) by ignored DXCC: {', '.join(breakdown_values)}")
+                else:
+                    self._log('INFO', f"Ignored DXCC active, no matching QSOs found: {ignored_ids}")
             
             self._progress("Processing QSOs by DXCC...")
             handler_results = self.process_qsos_by_dxcc(qsos_to_process)
@@ -545,6 +698,11 @@ class QSLProcessor:
                     raise
             
             stats['total_to_send'] = len(all_qsl_qsos)
+            if ignored_ids:
+                stats['ignored_dxcc'] = {
+                    'ids': ignored_ids,
+                    'skipped': len(qsos) - skipped_count - len(qsos_to_process),
+                }
             self.progress_value_callback(len(qsos), len(qsos))
             
             return {

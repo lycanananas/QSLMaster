@@ -2,9 +2,12 @@ import requests
 import xml.etree.ElementTree as ET
 import logging
 import time
+import re
+import unicodedata
 from typing import Dict, Any, Optional
 
 from .callsign_utils import extract_homecall
+from qslmaster_version import get_user_agent
 
 
 class QRZAPIError(Exception):
@@ -20,7 +23,7 @@ class QRZAPI:
         self.session_key = None
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'QSLMaster/1.2'
+            'User-Agent': get_user_agent()
         })
         self.logger = logging.getLogger(__name__)
     
@@ -98,15 +101,35 @@ class QRZAPI:
             if data is None:
                 data = self.lookup_call(callsign)
             
-            qslmgr = data.get('qslmgr', '').lower()
-            
-            if not qslmgr:
+            qslmgr_raw = str(data.get('qslmgr', '') or '')
+            if not qslmgr_raw.strip():
                 return False
-            
-            valid_methods = [
-                'biuro', 'bureau', 'bureua', 'bireau', 'bureao', 'buiro', 'biro',
-                'buro', 'büro', 'agence'
+
+            qslmgr = qslmgr_raw.lower().strip()
+            qslmgr = qslmgr.replace('w/o', 'without')
+            qslmgr = qslmgr.replace('w\\o', 'without')
+            qslmgr = re.sub(r"[\[\](){}/\\|;,:]+", " ", qslmgr)
+            qslmgr = re.sub(r"\s+", " ", qslmgr).strip()
+
+            qslmgr_folded = unicodedata.normalize('NFKD', qslmgr)
+            qslmgr_folded = ''.join(ch for ch in qslmgr_folded if not unicodedata.combining(ch))
+
+            allow_words = r"(?:biuro|agence|biro|buro|burea\w*)"
+            deny_words = r"(?:no|not|without|none|brak|bez|kein|ohne|sans)"
+
+            deny_patterns = [
+                rf"\b{deny_words}\b(?:\W+\w+){{0,2}}\W+\b{allow_words}\b",
+                rf"\bno\s*{allow_words}\b",
+                rf"\b{deny_words}\b\W+\bqsl\b(?:\W+\w+){{0,2}}\W+\b{allow_words}\b",
             ]
-            return any(method in qslmgr for method in valid_methods)
+
+            for pattern in deny_patterns:
+                if re.search(pattern, qslmgr_folded, flags=re.IGNORECASE):
+                    return False
+
+            if re.search(rf"\b{allow_words}\b", qslmgr_folded, flags=re.IGNORECASE):
+                return True
+
+            return False
         except QRZAPIError:
             return False

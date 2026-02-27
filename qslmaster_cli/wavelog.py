@@ -1,5 +1,6 @@
 import requests
 from typing import Dict, Any, Optional, Tuple
+from qslmaster_version import get_user_agent
 
 
 class WavelogAPIError(Exception):
@@ -13,7 +14,7 @@ class WavelogAPI:
         self.api_key = api_key
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'QSLMaster/1.2'
+            'User-Agent': get_user_agent()
         })
         
         self._check_version()

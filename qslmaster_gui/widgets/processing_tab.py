@@ -4,7 +4,8 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QDateEdit, QCheckBox, QGroupBox, QTextEdit, QProgressBar,
-    QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem
+    QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
+    QDialog, QDialogButtonBox, QRadioButton, QSpinBox
 )
 from PyQt6.QtCore import Qt, QDate, QThreadPool, pyqtSlot
 from PyQt6.QtGui import QFont
@@ -132,8 +133,17 @@ class ProcessingTab(QWidget):
         to_layout.addWidget(self.to_date_input)
         date_layout.addLayout(to_layout)
 
+        quick_range_layout = QHBoxLayout()
+        self.select_range_btn = QPushButton("Select range...")
+        self.select_range_btn.clicked.connect(self.open_select_range_dialog)
+        self.select_range_btn.setMaximumWidth(150)
+        quick_range_layout.addWidget(self.select_range_btn)
+        quick_range_layout.addStretch()
+        date_layout.addLayout(quick_range_layout)
+
         date_group.setLayout(date_layout)
-        date_group.setMinimumWidth(250)
+        date_group.setMinimumWidth(210)
+        date_group.setMaximumWidth(260)
 
         output_group = QGroupBox("Output Options")
         output_layout = QVBoxLayout()
@@ -173,8 +183,8 @@ class ProcessingTab(QWidget):
         output_group.setLayout(output_layout)
 
         options_layout = QHBoxLayout()
-        options_layout.addWidget(date_group)
-        options_layout.addWidget(output_group)
+        options_layout.addWidget(date_group, 1)
+        options_layout.addWidget(output_group, 2)
         layout.addLayout(options_layout)
 
         process_button = QPushButton("Generate QSLs")
@@ -210,6 +220,100 @@ class ProcessingTab(QWidget):
         enabled = self.use_date_filter.isChecked()
         self.from_date_input.setEnabled(enabled)
         self.to_date_input.setEnabled(enabled)
+        self.select_range_btn.setEnabled(enabled)
+
+    def set_last_days_range(self, days: int):
+        if days <= 0:
+            return
+        self.use_date_filter.setChecked(True)
+        end_date = QDate.currentDate()
+        start_date = end_date.addDays(-(days - 1))
+        self.from_date_input.setDate(start_date)
+        self.to_date_input.setDate(end_date)
+
+    def set_last_full_months_range(self, months: int):
+        if months <= 0:
+            return
+        self.use_date_filter.setChecked(True)
+        today = QDate.currentDate()
+        first_day_this_month = QDate(today.year(), today.month(), 1)
+        end_date = first_day_this_month.addDays(-1)
+        start_date = QDate(end_date.year(), end_date.month(), 1).addMonths(-(months - 1))
+        self.from_date_input.setDate(start_date)
+        self.to_date_input.setDate(end_date)
+
+    def set_this_month_range(self):
+        self.use_date_filter.setChecked(True)
+        today = QDate.currentDate()
+        start_date = QDate(today.year(), today.month(), 1)
+        self.from_date_input.setDate(start_date)
+        self.to_date_input.setDate(today)
+
+    def set_this_year_range(self):
+        self.use_date_filter.setChecked(True)
+        today = QDate.currentDate()
+        start_date = QDate(today.year(), 1, 1)
+        self.from_date_input.setDate(start_date)
+        self.to_date_input.setDate(today)
+
+    def open_select_range_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select Date Range Preset")
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.addWidget(QLabel("Choose a date range preset:"))
+
+        days_radio = QRadioButton("Last")
+        days_radio.setChecked(True)
+        days_spin = QSpinBox()
+        days_spin.setRange(1, 10000)
+        days_spin.setValue(14)
+        days_label = QLabel("days")
+        days_layout = QHBoxLayout()
+        days_layout.addWidget(days_radio)
+        days_layout.addWidget(days_spin)
+        days_layout.addWidget(days_label)
+        days_layout.addStretch()
+        dialog_layout.addLayout(days_layout)
+
+        months_radio = QRadioButton("Last")
+        months_spin = QSpinBox()
+        months_spin.setRange(1, 120)
+        months_spin.setValue(3)
+        months_label = QLabel("full months")
+        months_layout = QHBoxLayout()
+        months_layout.addWidget(months_radio)
+        months_layout.addWidget(months_spin)
+        months_layout.addWidget(months_label)
+        months_layout.addStretch()
+        dialog_layout.addLayout(months_layout)
+
+        this_month_radio = QRadioButton("Current month (from day 1 to today)")
+        dialog_layout.addWidget(this_month_radio)
+
+        this_year_radio = QRadioButton("Current year (from Jan 1 to today)")
+        dialog_layout.addWidget(this_year_radio)
+
+        days_spin.valueChanged.connect(lambda _: days_radio.setChecked(True))
+        months_spin.valueChanged.connect(lambda _: months_radio.setChecked(True))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Apply")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Close")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dialog_layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if days_radio.isChecked():
+            self.set_last_days_range(days_spin.value())
+        elif months_radio.isChecked():
+            self.set_last_full_months_range(months_spin.value())
+        elif this_month_radio.isChecked():
+            self.set_this_month_range()
+        else:
+            self.set_this_year_range()
 
     def on_generate_pdf_toggled(self):
         enabled = self.generate_pdf.isChecked()

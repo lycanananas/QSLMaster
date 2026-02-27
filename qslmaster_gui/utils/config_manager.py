@@ -283,16 +283,40 @@ def set_current_config_id(config_id: str) -> bool:
     return _save_configs_metadata(metadata)
 
 
-def create_config(name: str, wavelog_url: str, qrz_username: str, api_key: str, qrz_password: Optional[str] = None) -> Optional[str]:
+def _normalize_ignored_dxcc(ignored_dxcc: Optional[List[Any]]) -> List[int]:
+    if not ignored_dxcc:
+        return []
+
+    normalized = []
+    for value in ignored_dxcc:
+        try:
+            dxcc_id = int(str(value).strip())
+            if dxcc_id > 0:
+                normalized.append(dxcc_id)
+        except Exception:
+            continue
+    return sorted(set(normalized))
+
+
+def create_config(
+    name: str,
+    wavelog_url: str,
+    qrz_username: str,
+    api_key: str,
+    qrz_password: Optional[str] = None,
+    ignored_dxcc: Optional[List[Any]] = None,
+) -> Optional[str]:
     config_id = str(uuid.uuid4())
     
     metadata = _load_configs_metadata()
+    normalized_ignored_dxcc = _normalize_ignored_dxcc(ignored_dxcc)
     
     config_entry = {
         'id': config_id,
         'name': name,
         'wavelog_url': wavelog_url,
-        'qrz_username': qrz_username
+        'qrz_username': qrz_username,
+        'ignored_dxcc': normalized_ignored_dxcc,
     }
     
     metadata['configs'].append(config_entry)
@@ -325,6 +349,7 @@ def get_config(config_id: str) -> Optional[Dict[str, Any]]:
         return None
     
     config = config_entry.copy()
+    config['ignored_dxcc'] = _normalize_ignored_dxcc(config.get('ignored_dxcc', []))
     
     api_key = keyring_handler.get_credential(f'qslmaster_config_{config_id}_api_key')
     if api_key:
@@ -341,14 +366,24 @@ def get_config(config_id: str) -> Optional[Dict[str, Any]]:
     return config
 
 
-def update_config(config_id: str, name: str, wavelog_url: str, qrz_username: str, api_key: str, qrz_password: Optional[str] = None) -> bool:
+def update_config(
+    config_id: str,
+    name: str,
+    wavelog_url: str,
+    qrz_username: str,
+    api_key: str,
+    qrz_password: Optional[str] = None,
+    ignored_dxcc: Optional[List[Any]] = None,
+) -> bool:
     metadata = _load_configs_metadata()
+    normalized_ignored_dxcc = _normalize_ignored_dxcc(ignored_dxcc)
     
     for cfg in metadata.get('configs', []):
         if cfg['id'] == config_id:
             cfg['name'] = name
             cfg['wavelog_url'] = wavelog_url
             cfg['qrz_username'] = qrz_username
+            cfg['ignored_dxcc'] = normalized_ignored_dxcc
             break
     else:
         return False

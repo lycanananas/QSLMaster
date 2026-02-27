@@ -9,6 +9,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
 
 from .ui.main_window import QSLMasterMainWindow
+from qslmaster_version import get_version
 
 
 def setup_logging():
@@ -33,7 +34,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("qslmaster")
     app.setApplicationDisplayName("QSLMaster")
-    app.setApplicationVersion("1.2.0")
+    app.setApplicationVersion(get_version())
     app.setDesktopFileName("qslmaster")
 
     window = QSLMasterMainWindow()

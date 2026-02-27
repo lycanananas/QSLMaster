@@ -65,10 +65,11 @@ cp config.example.json config.json
 ```
 
 2. Edit config.json and fill in:
-   - `api_key` - Your API key from Wavelog
+  - `api_key` - Your API key from Wavelog
   - `wavelog_url` - URL of your Wavelog instance (e.g. `https://wavelog.example.com`, `https://wavelog.example.com/index.php`, or `https://wavelog.example.com/index.php/api`)
-   - `qrz_username` - Your QRZ.com username (optional)
-   - `qrz_password` - Your QRZ.com password (optional)
+  - `qrz_username` - Your QRZ.com username (optional)
+  - `qrz_password` - Your QRZ.com password (optional)
+  - `ignored_dxcc` - List of DXCC IDs to skip during QSL generation (optional)
 
 Example config.json:
 ```json
@@ -76,9 +77,12 @@ Example config.json:
   "api_key": "your_api_key_here",
   "wavelog_url": "https://wavelog.example.com",
   "qrz_username": "your_qrz_username",
-  "qrz_password": "your_qrz_password"
+  "qrz_password": "your_qrz_password",
+  "ignored_dxcc": [15, 54]
 }
 ```
+
+DXCC IDs `15` and `54` correspond to Asiatic Russia and European Russia.
 
 QRZ.com credentials are optional. If not provided, bureau verification for non-Poland stations is skipped.
 
@@ -119,7 +123,7 @@ python qslmaster_cli/main.py --config config.json --from-date 2024-01-01 --to-da
 
 Generate PDF labels:
 ```bash
-python qslmaster_cgotosli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
+python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
 ```
 
 Help:
@@ -131,7 +135,9 @@ python qslmaster_cli/main.py --help
 
 ### Application Interface
 
-![QSLMaster GUI Screenshot](docs/screenshot.png)
+![QSLMaster GUI Screenshot](docs/screenshot1.png)
+
+![QSLMaster GUI Screenshot](docs/screenshot2.png)
 
 ### QSL Card Example
 
@@ -152,7 +158,28 @@ python qslmaster_cli/validate_adif.py qsl.adi
 
 Unit tests for callsign extraction:
 ```bash
-python -m qslmaster_cli.callsign_utils
+python -m qslmaster_cli.callsign_selftest
+```
+
+QRZ bureau verification self-test (requires `qrz_username`/`qrz_password` in `config.json`):
+```bash
+python -m qslmaster_cli.qrz_selftest --config config.json
+```
+
+QRZ bureau verification with additional random callsigns (default 10 when `--random` has no value):
+```bash
+python -m qslmaster_cli.qrz_selftest --config config.json --random
+python -m qslmaster_cli.qrz_selftest --config config.json --random 35
+```
+
+PZK bureau lookup self-test:
+```bash
+python -m qslmaster_cli.pzk_selftest
+```
+
+Ignored DXCC filter self-test:
+```bash
+python -m qslmaster_cli.ignored_dxcc_selftest
 ```
 
 This runs basic tests for the `extract_homecall()` function which handles various callsign formats including slashed callsigns (e.g., `DL/SQ5FOX/M/DL` → `SQ5FOX`).
@@ -162,15 +189,17 @@ This runs basic tests for the `extract_homecall()` function which handles variou
 ### Build CLI Package
 
 ```bash
-pip install build
-python -m build
+pip install pyinstaller
+pyinstaller --onefile --name qslmaster-cli qslmaster_cli/main.py
 ```
 
 ### Build Arch Linux Package
 
 Requires `makepkg`:
 ```bash
-makepkg -si
+VERSION=$(python -c "from qslmaster_version import SOURCE_VERSION; print(SOURCE_VERSION)")
+sed "s/__VERSION__/${VERSION}/g" arch/PKGBUILD.release > PKGBUILD.release
+makepkg -p PKGBUILD.release -si
 ```
 
 ### Build GUI Standalone (PyInstaller)

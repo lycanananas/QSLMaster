@@ -26,7 +26,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
         raise ConfigError(f"Error reading configuration file: {e}")
     
     required_fields = ['api_key', 'wavelog_url']
-    optional_fields = ['qrz_username', 'qrz_password', 'logo_path']
+    optional_fields = ['qrz_username', 'qrz_password', 'logo_path', 'ignored_dxcc']
     
     missing_fields = [field for field in required_fields if field not in config]
     if missing_fields:
@@ -34,7 +34,10 @@ def load_config(config_path: str) -> Dict[str, Any]:
     
     for field in optional_fields:
         if field not in config:
-            config[field] = ''
+            if field == 'ignored_dxcc':
+                config[field] = []
+            else:
+                config[field] = ''
     
     return config
 
@@ -55,5 +58,23 @@ def validate_config(config: Dict[str, Any]) -> bool:
     
     if not isinstance(config.get('qrz_password'), str):
         raise ConfigError("qrz_password must be a string")
+
+    ignored_dxcc = config.get('ignored_dxcc', [])
+    if ignored_dxcc is None:
+        ignored_dxcc = []
+    if not isinstance(ignored_dxcc, list):
+        raise ConfigError("ignored_dxcc must be a list of DXCC IDs")
+
+    normalized_ignored_dxcc = []
+    for value in ignored_dxcc:
+        try:
+            dxcc_id = int(str(value).strip())
+        except Exception:
+            raise ConfigError(f"ignored_dxcc contains invalid DXCC ID: {value}")
+        if dxcc_id <= 0:
+            raise ConfigError(f"ignored_dxcc contains invalid DXCC ID: {value}")
+        normalized_ignored_dxcc.append(dxcc_id)
+
+    config['ignored_dxcc'] = sorted(set(normalized_ignored_dxcc))
     
     return True
