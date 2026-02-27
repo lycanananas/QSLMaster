@@ -4,18 +4,24 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QGroupBox, QComboBox, QMessageBox, QFileDialog
+    QPushButton, QGroupBox, QComboBox, QMessageBox, QFileDialog,
+    QListWidget, QListWidgetItem
 )
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen
 
 from qslmaster_gui.utils.config_manager import (
     list_all_configs, get_config, create_config, update_config, delete_config,
     get_current_config_id, set_current_config_id, _save_logo_file, _delete_logo_file
 )
+from qslmaster_cli.qslmaster_core import QSLProcessor
 
 logger = logging.getLogger(__name__)
 
 
 class ConfigDialog(QDialog):
+    _dxcc_entities_cache = None
+
     def __init__(
         self,
         parent=None,
@@ -24,7 +30,7 @@ class ConfigDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("QSL Configuration")
-        self.setGeometry(200, 200, 500, 400)
+        self.setGeometry(180, 120, 980, 680)
         self.on_config_deleted = on_config_deleted
         self.on_config_created = on_config_created
         self.init_ui()
@@ -38,6 +44,10 @@ class ConfigDialog(QDialog):
         self.config_combo = QComboBox()
         config_layout.addWidget(self.config_combo)
         layout.addLayout(config_layout)
+
+        content_layout = QHBoxLayout()
+
+        left_column = QVBoxLayout()
 
         wavelog_group = QGroupBox("Wavelog Configuration")
         wavelog_layout = QVBoxLayout()
@@ -54,7 +64,7 @@ class ConfigDialog(QDialog):
         wavelog_layout.addWidget(self.api_key_input)
 
         wavelog_group.setLayout(wavelog_layout)
-        layout.addWidget(wavelog_group)
+        left_column.addWidget(wavelog_group)
 
         qrz_group = QGroupBox("QRZ.com Configuration (Optional)")
         qrz_layout = QVBoxLayout()
@@ -71,7 +81,7 @@ class ConfigDialog(QDialog):
         qrz_layout.addWidget(self.qrz_password_input)
 
         qrz_group.setLayout(qrz_layout)
-        layout.addWidget(qrz_group)
+        left_column.addWidget(qrz_group)
 
         logo_group = QGroupBox("QSL Logo (Optional)")
         logo_layout = QVBoxLayout()
@@ -79,6 +89,7 @@ class ConfigDialog(QDialog):
         logo_layout.addWidget(QLabel("Logo File:"))
         self.logo_input = QLineEdit()
         self.logo_input.setPlaceholderText("No logo selected")
+        self.logo_input.setReadOnly(True)
         logo_layout.addWidget(self.logo_input)
         
         logo_btn_layout = QHBoxLayout()
@@ -90,9 +101,49 @@ class ConfigDialog(QDialog):
         logo_remove_btn.clicked.connect(self.remove_logo)
         logo_btn_layout.addWidget(logo_remove_btn)
         logo_layout.addLayout(logo_btn_layout)
+
+        logo_layout.addWidget(QLabel("Logo Preview:"))
+        self.logo_preview = QLabel()
+        self.logo_preview.setFixedSize(220, 140)
+        self.logo_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.logo_preview.setStyleSheet("border: 1px solid #666;")
+        self.update_logo_preview('')
+        logo_layout.addWidget(self.logo_preview)
         
         logo_group.setLayout(logo_layout)
-        layout.addWidget(logo_group)
+        left_column.addWidget(logo_group)
+
+        dxcc_group = QGroupBox("Ignored DXCC (Optional)")
+        dxcc_layout = QVBoxLayout()
+
+        dxcc_layout.addWidget(QLabel("Select DXCC entities to ignore when generating QSLs:"))
+        self.dxcc_search_input = QLineEdit()
+        self.dxcc_search_input.setPlaceholderText("Search by DXCC name or ID...")
+        self.dxcc_search_input.textChanged.connect(self.on_dxcc_search_changed)
+        dxcc_layout.addWidget(self.dxcc_search_input)
+
+        self.dxcc_list = QListWidget()
+        self.dxcc_list.setMinimumHeight(220)
+        dxcc_layout.addWidget(self.dxcc_list)
+
+        dxcc_buttons_layout = QHBoxLayout()
+        dxcc_reload_btn = QPushButton("Reload DXCC List")
+        dxcc_reload_btn.clicked.connect(lambda: self.load_dxcc_options(force_reload=True))
+        dxcc_buttons_layout.addWidget(dxcc_reload_btn)
+
+        dxcc_clear_btn = QPushButton("Clear Selection")
+        dxcc_clear_btn.clicked.connect(self.clear_dxcc_selection)
+        dxcc_buttons_layout.addWidget(dxcc_clear_btn)
+        dxcc_layout.addLayout(dxcc_buttons_layout)
+
+        dxcc_group.setLayout(dxcc_layout)
+
+        right_column = QVBoxLayout()
+        right_column.addWidget(dxcc_group)
+
+        content_layout.addLayout(left_column, 1)
+        content_layout.addLayout(right_column, 1)
+        layout.addLayout(content_layout)
 
         button_layout = QHBoxLayout()
 
@@ -114,6 +165,135 @@ class ConfigDialog(QDialog):
 
         layout.addLayout(button_layout)
         self.setLayout(layout)
+        self.load_dxcc_options()
+
+    def load_dxcc_options(self, force_reload: bool = False):
+        selected_ids = set(self.get_selected_dxcc_ids())
+        self.dxcc_list.clear()
+
+        try:
+            if force_reload or ConfigDialog._dxcc_entities_cache is None:
+                ConfigDialog._dxcc_entities_cache = QSLProcessor.list_all_dxcc_entities()
+            entities = ConfigDialog._dxcc_entities_cache
+        except Exception as e:
+            logger.error(f"Failed to load DXCC list: {e}")
+            QMessageBox.warning(self, "DXCC List Error", f"Could not load DXCC list: {e}")
+            return
+
+        for entity in entities:
+            dxcc_id = int(entity.get('id'))
+            name = str(entity.get('name', '')).strip()
+            text = f"{name} ({dxcc_id})"
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, dxcc_id)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            if dxcc_id in selected_ids:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+            self.dxcc_list.addItem(item)
+
+        self.on_dxcc_search_changed(self.dxcc_search_input.text())
+
+    def on_dxcc_search_changed(self, text: str):
+        query = str(text or '').strip().lower()
+        for i in range(self.dxcc_list.count()):
+            item = self.dxcc_list.item(i)
+            dxcc_id = item.data(Qt.ItemDataRole.UserRole)
+            item_text = item.text().lower()
+            if not query:
+                item.setHidden(False)
+                continue
+            id_text = str(dxcc_id or '')
+            item.setHidden(query not in item_text and query not in id_text)
+
+    def update_logo_preview(self, logo_path: str):
+        canvas = self.build_logo_preview_canvas()
+        path = str(logo_path or '').strip()
+        if not path:
+            painter = QPainter(canvas)
+            painter.setPen(QPen(QColor(70, 70, 70)))
+            painter.drawText(canvas.rect(), Qt.AlignmentFlag.AlignCenter, 'No logo')
+            painter.end()
+            self.logo_preview.setPixmap(canvas)
+            return
+
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            painter = QPainter(canvas)
+            painter.setPen(QPen(QColor(160, 40, 40)))
+            painter.drawText(canvas.rect(), Qt.AlignmentFlag.AlignCenter, 'Preview unavailable')
+            painter.end()
+            self.logo_preview.setPixmap(canvas)
+            return
+
+        scaled = pixmap.scaled(
+            max(1, self.logo_preview.width() - 8),
+            max(1, self.logo_preview.height() - 8),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        painter = QPainter(canvas)
+        x_pos = (canvas.width() - scaled.width()) // 2
+        y_pos = (canvas.height() - scaled.height()) // 2
+        painter.drawPixmap(x_pos, y_pos, scaled)
+        painter.end()
+        self.logo_preview.setPixmap(canvas)
+
+    def build_logo_preview_canvas(self) -> QPixmap:
+        width = max(1, self.logo_preview.width() - 2)
+        height = max(1, self.logo_preview.height() - 2)
+        canvas = QPixmap(width, height)
+
+        tile_size = 16
+        half = tile_size // 2
+        light = QColor(210, 210, 210)
+        dark = QColor(170, 170, 170)
+
+        painter = QPainter(canvas)
+        y_pos = 0
+        while y_pos < height:
+            x_pos = 0
+            while x_pos < width:
+                painter.fillRect(x_pos, y_pos, half, half, dark)
+                painter.fillRect(x_pos + half, y_pos, half, half, light)
+                painter.fillRect(x_pos, y_pos + half, half, half, light)
+                painter.fillRect(x_pos + half, y_pos + half, half, half, dark)
+                x_pos += tile_size
+            y_pos += tile_size
+        painter.end()
+        return canvas
+
+    def clear_dxcc_selection(self):
+        for i in range(self.dxcc_list.count()):
+            item = self.dxcc_list.item(i)
+            item.setCheckState(Qt.CheckState.Unchecked)
+
+    def get_selected_dxcc_ids(self):
+        selected = []
+        for i in range(self.dxcc_list.count()):
+            item = self.dxcc_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                value = item.data(Qt.ItemDataRole.UserRole)
+                if value is not None:
+                    selected.append(int(value))
+        return sorted(set(selected))
+
+    def set_selected_dxcc_ids(self, dxcc_ids):
+        selected = set()
+        for value in dxcc_ids or []:
+            try:
+                selected.add(int(str(value).strip()))
+            except Exception:
+                continue
+
+        for i in range(self.dxcc_list.count()):
+            item = self.dxcc_list.item(i)
+            value = item.data(Qt.ItemDataRole.UserRole)
+            if value in selected:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
 
     def load_configs(self):
         configs = list_all_configs()
@@ -137,6 +317,8 @@ class ConfigDialog(QDialog):
         config_id = self.config_combo.currentData()
         if not config_id:
             self.logo_input.clear()
+            self.update_logo_preview('')
+            self.clear_dxcc_selection()
             return
 
         config = get_config(config_id)
@@ -145,12 +327,15 @@ class ConfigDialog(QDialog):
             self.api_key_input.setText(config.get('api_key', ''))
             self.qrz_username_input.setText(config.get('qrz_username', ''))
             self.qrz_password_input.setText(config.get('qrz_password', ''))
+            self.set_selected_dxcc_ids(config.get('ignored_dxcc', []))
             
             logo_path = config.get('logo_path', '')
             if logo_path:
                 self.logo_input.setText(logo_path)
+                self.update_logo_preview(logo_path)
             else:
                 self.logo_input.clear()
+                self.update_logo_preview('')
 
     def browse_logo_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -162,6 +347,7 @@ class ConfigDialog(QDialog):
         logger.info(f"QFileDialog returned: {file_path}")
         if file_path:
             self.logo_input.setText(file_path)
+            self.update_logo_preview(file_path)
             logger.info(f"Logo input set to: {self.logo_input.text()}")
     
     def remove_logo(self):
@@ -169,6 +355,7 @@ class ConfigDialog(QDialog):
         if config_id:
             _delete_logo_file(config_id)
             self.logo_input.clear()
+            self.update_logo_preview('')
 
     def save_config(self):
         if not self.wavelog_url_input.text():
@@ -197,7 +384,8 @@ class ConfigDialog(QDialog):
                 self.wavelog_url_input.text(),
                 self.qrz_username_input.text(),
                 self.api_key_input.text(),
-                self.qrz_password_input.text() if self.qrz_password_input.text() else None
+                self.qrz_password_input.text() if self.qrz_password_input.text() else None,
+                self.get_selected_dxcc_ids(),
             ):
                 logo_file = self.logo_input.text().strip()
                 if logo_file:
@@ -258,7 +446,8 @@ class ConfigDialog(QDialog):
             self.wavelog_url_input.text(),
             self.qrz_username_input.text(),
             self.api_key_input.text(),
-            self.qrz_password_input.text() if self.qrz_password_input.text() else None
+            self.qrz_password_input.text() if self.qrz_password_input.text() else None,
+            self.get_selected_dxcc_ids(),
         )
 
         if config_id:

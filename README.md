@@ -65,10 +65,11 @@ cp config.example.json config.json
 ```
 
 2. Edit config.json and fill in:
-   - `api_key` - Your API key from Wavelog
+  - `api_key` - Your API key from Wavelog
   - `wavelog_url` - URL of your Wavelog instance (e.g. `https://wavelog.example.com`, `https://wavelog.example.com/index.php`, or `https://wavelog.example.com/index.php/api`)
-   - `qrz_username` - Your QRZ.com username (optional)
-   - `qrz_password` - Your QRZ.com password (optional)
+  - `qrz_username` - Your QRZ.com username (optional)
+  - `qrz_password` - Your QRZ.com password (optional)
+  - `ignored_dxcc` - List of DXCC IDs to skip during QSL generation (optional)
 
 Example config.json:
 ```json
@@ -76,9 +77,12 @@ Example config.json:
   "api_key": "your_api_key_here",
   "wavelog_url": "https://wavelog.example.com",
   "qrz_username": "your_qrz_username",
-  "qrz_password": "your_qrz_password"
+  "qrz_password": "your_qrz_password",
+  "ignored_dxcc": [15, 54]
 }
 ```
+
+DXCC IDs `15` and `54` correspond to Asiatic Russia and European Russia.
 
 QRZ.com credentials are optional. If not provided, bureau verification for non-Poland stations is skipped.
 
@@ -169,6 +173,11 @@ python -m qslmaster_cli.qrz_selftest --config config.json --random 35
 PZK bureau lookup self-test:
 ```bash
 python -m qslmaster_cli.pzk_selftest
+```
+
+Ignored DXCC filter self-test:
+```bash
+python -m qslmaster_cli.ignored_dxcc_selftest
 ```
 
 This runs basic tests for the `extract_homecall()` function which handles various callsign formats including slashed callsigns (e.g., `DL/SQ5FOX/M/DL` → `SQ5FOX`).
