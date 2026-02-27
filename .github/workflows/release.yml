@@ -134,11 +134,25 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install -r requirements-gui.txt
-          pip install pyinstaller
+          pip install pyinstaller pillow
+
+        - run: |
+          python - << 'PY'
+          from PIL import Image
+          image = Image.open('qslmaster_gui/resources/icon.png')
+          image.save('qslmaster.ico', format='ICO', sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+          PY
 
       - run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name qslmaster qslmaster_gui/main.py
-          pyinstaller --noconfirm --clean --onefile --name qslmaster-cli qslmaster_cli/main.py
+          pyinstaller --noconfirm --clean --onefile --windowed --icon qslmaster.ico --name qslmaster packaging/windows/entry_gui.py
+          pyinstaller --noconfirm --clean --onefile --icon qslmaster.ico --name qslmaster-cli packaging/windows/entry_cli.py
+
+      - shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $version = '${{ needs.validate_tag.outputs.version }}'
+          (Get-Content packaging/windows/qslmaster.iss) -replace '__VERSION__', $version | Set-Content qslmaster.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" qslmaster.iss
 
       - shell: pwsh
         run: |
@@ -151,8 +165,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64
+          name: qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64_no_installer
           path: qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64_installer
+          path: dist_installer/qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64-setup.exe
 
   build_arch:
     needs: validate_tag
@@ -165,11 +184,17 @@ jobs:
       - run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed base-devel git python python-pip
+          useradd -m builder || true
+          chown -R builder:builder "$GITHUB_WORKSPACE"
 
       - run: |
-          VERSION="${{ needs.validate_tag.outputs.version }}"
-          sed "s/__VERSION__/${VERSION}/g" arch/PKGBUILD.release > PKGBUILD.release
-          makepkg -p PKGBUILD.release --syncdeps --cleanbuild --noconfirm
+          su -s /bin/bash builder -c '
+            set -e
+            cd "$GITHUB_WORKSPACE"
+            VERSION="${{ needs.validate_tag.outputs.version }}"
+            sed "s/__VERSION__/${VERSION}/g" arch/PKGBUILD.release > PKGBUILD.release
+            makepkg -p PKGBUILD.release --cleanbuild --noconfirm --nodeps
+          '
 
       - run: |
           VERSION="${{ needs.validate_tag.outputs.version }}"
