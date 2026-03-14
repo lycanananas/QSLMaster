@@ -278,7 +278,9 @@ class QSLProcessor:
         return [self.normalize_station(station) for station in stations]
 
     def resolve_station_ids(self, stations: List[Dict[str, str]], station_selectors) -> Optional[List[str]]:
-        if not station_selectors or station_selectors == ['all']:
+        if not station_selectors:
+            raise QSLProcessorError(f"Please select at least one station or \"all\" for processing")
+        if station_selectors == ['all']:
             return None
 
         resolved = []

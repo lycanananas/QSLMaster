@@ -122,6 +122,7 @@ class ProcessingTab(QWidget):
                 item = QListWidgetItem(label)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Unchecked)
+                item.setData(Qt.ItemDataRole.UserRole, s['station_id'])
                 self.station_list.addItem(item)
             self.all_stations_check.setChecked(True)
             self.station_list.setEnabled(False)
@@ -523,8 +524,8 @@ class ProcessingTab(QWidget):
             for i in range(self.station_list.count()):
                 item = self.station_list.item(i)
                 if item.checkState() == Qt.CheckState.Checked:
-                    selected_stations.append(item.text().split(' ')[0])
-        station_selector = selected_stations if selected_stations else ['all']
+                    selected_stations.append(item.data(Qt.ItemDataRole.UserRole))
+        station_selector = selected_stations if selected_stations else None
 
         self.processor_worker = ProcessorWorker(
             config_to_use,
