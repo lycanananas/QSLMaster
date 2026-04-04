@@ -7,8 +7,9 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
     QDialog, QDialogButtonBox, QRadioButton, QSpinBox
 )
-from PyQt6.QtCore import Qt, QDate, QThreadPool, pyqtSlot
+from PyQt6.QtCore import Qt, QDate, pyqtSlot
 from PyQt6.QtGui import QFont
+from qslmaster_gui.dialogs.pdf_options_dialog import PdfOptionsDialog
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
 from qslmaster_cli.qslmaster_core import QSLProcessor
 from qslmaster_cli.wavelog import WavelogAPI
@@ -19,30 +20,52 @@ class ProcessingTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.processor_worker = None
-        self.thread_pool = QThreadPool()
         self.current_config = None
         self.stations_loaded = False
         self.qrz_error_count = 0
         self.pzk_error_count = 0
         self.qrz_disabled = False
         self.pzk_disabled = False
+        self.processing_active = False
+        self.pdf_draw_borders = False
+        self.pdf_page_options_text = ''
+        self.pdf_page_specs = []
         self.init_ui()
 
     @staticmethod
-    def _get_source_type(config) -> str:
-        source = str((config or {}).get('source', 'wavelog')).strip().lower()
+    def _normalize_source(source: str) -> str:
+        source = str(source or 'wavelog').strip().lower()
         if source in {'adif', 'file'}:
             return 'adif_file'
         return source
 
-    def _update_process_button_label(self):
-        if not hasattr(self, 'process_button'):
-            return
-        source = self._get_source_type(self.current_config)
-        if source == 'adif_file':
-            self.process_button.setText("Generate QSLs (ADIF)")
-        else:
-            self.process_button.setText("Generate QSLs (Wavelog)")
+    def _has_wavelog_config(self, config) -> bool:
+        return bool(config and config.get('api_key') and config.get('wavelog_url'))
+
+    def _set_processing_buttons_enabled(self, enabled: bool):
+        self.process_wavelog_button.setEnabled(enabled)
+        self.process_adif_button.setEnabled(enabled)
+
+    def _get_pdf_options_summary(self) -> str:
+        if not self.generate_pdf.isChecked():
+            return "Page options are disabled"
+
+        if not self.pdf_draw_borders and not self.pdf_page_specs:
+            return "No page options configured"
+
+        return "Page options are set"
+
+    def _refresh_pdf_options_summary(self):
+        self.pdf_options_summary_label.setText(self._get_pdf_options_summary())
+
+    def _set_processing_state(self, active: bool, aborting: bool = False):
+        self.processing_active = active
+        self.process_wavelog_button.setVisible(not active)
+        self.process_adif_button.setVisible(not active)
+        self.abort_processing_button.setVisible(active)
+        self.abort_processing_button.setEnabled(active and not aborting)
+        self.abort_processing_button.setText("Aborting..." if aborting else "Abort Processing")
+        self._set_processing_buttons_enabled(not active)
 
     def _select_adif_source_file(self, suggested_path: str = '') -> str:
         start_path = str(suggested_path or '').strip()
@@ -85,27 +108,18 @@ class ProcessingTab(QWidget):
 
     def set_config(self, config):
         self.current_config = config
-        self._update_process_button_label()
-        source = self._get_source_type(config)
-        is_wavelog = source == 'wavelog'
-        self.refresh_station_btn.setEnabled(is_wavelog)
+        has_wavelog_config = self._has_wavelog_config(config)
+        self.refresh_station_btn.setEnabled(has_wavelog_config)
 
-        if not is_wavelog:
+        if not has_wavelog_config:
             self._set_station_controls_for_adif()
             return
 
         self._set_station_controls_for_wavelog()
-
-        if not config or not config.get('api_key') or not config.get('wavelog_url'):
-            self.station_list.clear()
-            self.all_stations_check.setChecked(True)
-            self.station_list.setEnabled(False)
-            self.stations_loaded = False
-        else:
-            self.load_station_list(config)
+        self.load_station_list(config)
 
     def load_station_list(self, config):
-        if self._get_source_type(config) != 'wavelog':
+        if not self._has_wavelog_config(config):
             self._set_station_controls_for_adif()
             return
         self._set_station_controls_for_wavelog()
@@ -134,7 +148,7 @@ class ProcessingTab(QWidget):
             self.station_list.setEnabled(False)
             self.stations_loaded = False
     def on_refresh_station_list(self):
-        if self.current_config and self._get_source_type(self.current_config) == 'wavelog':
+        if self._has_wavelog_config(self.current_config):
             self.load_station_list(self.current_config)
 
     def init_ui(self):
@@ -249,8 +263,14 @@ class ProcessingTab(QWidget):
         self.output_pdf_layout.addWidget(self.browse_pdf_btn)
         output_layout.addLayout(self.output_pdf_layout)
 
-        self.debug_labels = QCheckBox("Debug Labels (draw borders)")
-        output_layout.addWidget(self.debug_labels)
+        pdf_options_row = QHBoxLayout()
+        self.pdf_options_button = QPushButton("PDF Options...")
+        self.pdf_options_button.clicked.connect(self.open_pdf_options_dialog)
+        pdf_options_row.addWidget(self.pdf_options_button)
+        self.pdf_options_summary_label = QLabel()
+        self.pdf_options_summary_label.setWordWrap(True)
+        pdf_options_row.addWidget(self.pdf_options_summary_label, 1)
+        output_layout.addLayout(pdf_options_row)
 
         output_group.setLayout(output_layout)
 
@@ -259,13 +279,24 @@ class ProcessingTab(QWidget):
         options_layout.addWidget(output_group, 2)
         layout.addLayout(options_layout)
 
-        process_button = QPushButton("Generate QSLs")
-        process_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        process_button.setMinimumHeight(40)
-        process_button.clicked.connect(self.start_processing)
-        layout.addWidget(process_button)
-        self.process_button = process_button
-        self._update_process_button_label()
+        process_buttons_layout = QHBoxLayout()
+        self.process_wavelog_button = QPushButton("Process with Wavelog")
+        self.process_wavelog_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.process_wavelog_button.setMinimumHeight(40)
+        self.process_wavelog_button.clicked.connect(self.start_wavelog_processing)
+        process_buttons_layout.addWidget(self.process_wavelog_button)
+        self.process_adif_button = QPushButton("Process with ADIF")
+        self.process_adif_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.process_adif_button.setMinimumHeight(40)
+        self.process_adif_button.clicked.connect(self.start_adif_processing)
+        process_buttons_layout.addWidget(self.process_adif_button)
+        self.abort_processing_button = QPushButton("Abort Processing")
+        self.abort_processing_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.abort_processing_button.setMinimumHeight(40)
+        self.abort_processing_button.clicked.connect(self.abort_processing)
+        self.abort_processing_button.setVisible(False)
+        process_buttons_layout.addWidget(self.abort_processing_button)
+        layout.addLayout(process_buttons_layout)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(True)
@@ -288,6 +319,7 @@ class ProcessingTab(QWidget):
 
         self.on_date_filter_toggled()
         self.on_generate_pdf_toggled()
+        self._refresh_pdf_options_summary()
 
     def on_date_filter_toggled(self):
         enabled = self.use_date_filter.isChecked()
@@ -392,7 +424,21 @@ class ProcessingTab(QWidget):
         enabled = self.generate_pdf.isChecked()
         self.output_pdf_input.setEnabled(enabled)
         self.browse_pdf_btn.setEnabled(enabled)
-        self.debug_labels.setEnabled(enabled)
+        self.pdf_options_button.setEnabled(enabled)
+        self._refresh_pdf_options_summary()
+
+    def open_pdf_options_dialog(self):
+        dialog = PdfOptionsDialog(self.pdf_draw_borders, self.pdf_page_options_text, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            self.pdf_page_specs = dialog.get_page_specs()
+        except ValueError as e:
+            QMessageBox.warning(self, "PDF Page Options Error", str(e))
+            return
+        self.pdf_draw_borders = dialog.get_draw_borders()
+        self.pdf_page_options_text = dialog.get_page_options_text()
+        self._refresh_pdf_options_summary()
 
     def on_log_level_changed(self, level_name: str):
         level = getattr(logging, level_name, logging.INFO)
@@ -463,12 +509,25 @@ class ProcessingTab(QWidget):
             self.output_pdf_input.setText(file_path)
 
     def start_processing(self):
+        self.start_wavelog_processing()
+
+    def start_wavelog_processing(self):
+        self._start_processing('wavelog')
+
+    def start_adif_processing(self):
+        self._start_processing('adif_file')
+
+    def _start_processing(self, source: str):
+        if self.processing_active:
+            return
+
         if not self.current_config:
             QMessageBox.warning(self, "Error", "No configuration loaded")
             return
 
         config_to_use = self.current_config.copy()
-        source = self._get_source_type(config_to_use)
+        source = self._normalize_source(source)
+        config_to_use['source'] = source
 
         if source == 'wavelog':
             if not config_to_use.get('api_key'):
@@ -534,7 +593,8 @@ class ProcessingTab(QWidget):
             modes=modes,
             output_adif=output_adif,
             generate_pdf=output_pdf,
-            debug_labels=self.debug_labels.isChecked(),
+            pdf_page_specs=self.pdf_page_specs,
+            debug_labels=self.pdf_draw_borders,
             station_selector=station_selector,
         )
 
@@ -543,6 +603,7 @@ class ProcessingTab(QWidget):
         self.processor_worker.signals.log.connect(self.on_log)
         self.processor_worker.signals.finished.connect(self.on_finished)
         self.processor_worker.signals.error.connect(self.on_error)
+        self.processor_worker.signals.cancelled.connect(self.on_cancelled)
 
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
@@ -552,8 +613,15 @@ class ProcessingTab(QWidget):
         self.qrz_disabled = False
         self.pzk_disabled = False
 
-        self.process_button.setEnabled(False)
-        self.thread_pool.start(self.processor_worker)
+        self._set_processing_state(True)
+        self.processor_worker.start()
+
+    def abort_processing(self):
+        if not self.processor_worker or not self.processing_active:
+            return
+        self.on_log('WARNING', 'Abort requested by user')
+        self._set_processing_state(True, aborting=True)
+        self.processor_worker.stop()
 
     @pyqtSlot(str)
     def on_progress(self, message: str):
@@ -581,26 +649,36 @@ class ProcessingTab(QWidget):
     @pyqtSlot(dict)
     def on_finished(self, result: dict):
         self.progress_bar.setVisible(True)
-        self.process_button.setEnabled(True)
+        self._set_processing_state(False)
+        self.processor_worker = None
 
         if result['success']:
             stats_text = "Processing completed successfully!\n\n"
             stats_text += f"Total QSOs to send: {result['stats'].get('total_to_send', 0)}\n"
 
+            callsign_filter_stats = result['stats'].get('callsign_filter')
             ignored_dxcc_stats = result['stats'].get('ignored_dxcc')
+            already_sent_stats = result['stats'].get('already_sent')
 
             for country, stats in result['stats'].items():
-                if country in {'total_to_send', 'ignored_dxcc'}:
+                if country in {'total_to_send', 'callsign_filter', 'ignored_dxcc', 'already_sent'}:
                     continue
                 if isinstance(stats, dict):
                     stats_text += f"{country}: {stats.get('to_send', 0)}/{stats.get('total', 0)}\n"
 
+            if isinstance(callsign_filter_stats, dict):
+                mode = str(callsign_filter_stats.get('mode', 'off') or 'off').strip().lower()
+                mode_label = 'Allow list' if mode == 'allow' else 'Block list'
+                skipped = int(callsign_filter_stats.get('skipped', 0) or 0)
+                stats_text += f"Callsign filter ({mode_label}): {skipped}\n"
+
             if isinstance(ignored_dxcc_stats, dict):
-                ignored_ids = ignored_dxcc_stats.get('ids', []) or []
-                ignored_ids_text = ', '.join(str(value) for value in ignored_ids)
                 skipped = int(ignored_dxcc_stats.get('skipped', 0) or 0)
-                stats_text += f"Ignored DXCC: {skipped}"
-                stats_text += "\n"
+                stats_text += f"Ignored DXCC: {skipped}\n"
+
+            if isinstance(already_sent_stats, dict):
+                skipped = int(already_sent_stats.get('skipped', 0) or 0)
+                stats_text += f"Already sent QSOs: {skipped}\n"
 
             stats_text += f"\nOutput files:\n"
             stats_text += f"  ADIF: {result['output_adif']}\n"
@@ -623,5 +701,13 @@ class ProcessingTab(QWidget):
     @pyqtSlot(str)
     def on_error(self, error_message: str):
         self.progress_bar.setVisible(False)
-        self.process_button.setEnabled(True)
+        self._set_processing_state(False)
+        self.processor_worker = None
         QMessageBox.critical(self, "Processing Error", f"An error occurred: {error_message}")
+
+    @pyqtSlot(str)
+    def on_cancelled(self, message: str):
+        self.progress_bar.setVisible(False)
+        self._set_processing_state(False)
+        self.processor_worker = None
+        QMessageBox.information(self, "Processing Aborted", message)

@@ -298,6 +298,39 @@ def _normalize_ignored_dxcc(ignored_dxcc: Optional[List[Any]]) -> List[int]:
     return sorted(set(normalized))
 
 
+def _normalize_callsign_filter_mode(mode: Optional[str]) -> str:
+    normalized = str(mode or 'off').strip().lower()
+    aliases = {
+        'allowlist': 'allow',
+        'whitelist': 'allow',
+        'only': 'allow',
+        'blocklist': 'block',
+        'blacklist': 'block',
+        'skip': 'block',
+        'disabled': 'off',
+        'none': 'off',
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {'off', 'allow', 'block'}:
+        normalized = 'off'
+    return normalized
+
+
+def _normalize_callsign_filter_patterns(patterns: Optional[List[Any]]) -> List[str]:
+    if not patterns:
+        return []
+
+    normalized = []
+    seen = set()
+    for value in patterns:
+        pattern = str(value or '').strip().upper()
+        if not pattern or pattern in seen:
+            continue
+        normalized.append(pattern)
+        seen.add(pattern)
+    return normalized
+
+
 def create_config(
     name: str,
     wavelog_url: str,
@@ -305,13 +338,17 @@ def create_config(
     api_key: str,
     qrz_password: Optional[str] = None,
     ignored_dxcc: Optional[List[Any]] = None,
-    source: str = 'wavelog',
+    callsign_filter_mode: str = 'off',
+    callsign_filter_patterns: Optional[List[Any]] = None,
+    source: Optional[str] = None,
     adif_file_path: str = '',
 ) -> Optional[str]:
     config_id = str(uuid.uuid4())
     
     metadata = _load_configs_metadata()
     normalized_ignored_dxcc = _normalize_ignored_dxcc(ignored_dxcc)
+    normalized_callsign_filter_mode = _normalize_callsign_filter_mode(callsign_filter_mode)
+    normalized_callsign_filter_patterns = _normalize_callsign_filter_patterns(callsign_filter_patterns)
     
     config_entry = {
         'id': config_id,
@@ -319,6 +356,8 @@ def create_config(
         'wavelog_url': wavelog_url,
         'qrz_username': qrz_username,
         'ignored_dxcc': normalized_ignored_dxcc,
+        'callsign_filter_mode': normalized_callsign_filter_mode,
+        'callsign_filter_patterns': normalized_callsign_filter_patterns,
         'source': str(source or 'wavelog').strip().lower(),
         'adif_file_path': str(adif_file_path or '').strip(),
     }
@@ -354,6 +393,8 @@ def get_config(config_id: str) -> Optional[Dict[str, Any]]:
     
     config = config_entry.copy()
     config['ignored_dxcc'] = _normalize_ignored_dxcc(config.get('ignored_dxcc', []))
+    config['callsign_filter_mode'] = _normalize_callsign_filter_mode(config.get('callsign_filter_mode', 'off'))
+    config['callsign_filter_patterns'] = _normalize_callsign_filter_patterns(config.get('callsign_filter_patterns', []))
     source = str(config.get('source', 'wavelog')).strip().lower()
     if source in {'adif', 'file'}:
         source = 'adif_file'
@@ -385,11 +426,15 @@ def update_config(
     api_key: str,
     qrz_password: Optional[str] = None,
     ignored_dxcc: Optional[List[Any]] = None,
-    source: str = 'wavelog',
+    callsign_filter_mode: str = 'off',
+    callsign_filter_patterns: Optional[List[Any]] = None,
+    source: Optional[str] = None,
     adif_file_path: str = '',
 ) -> bool:
     metadata = _load_configs_metadata()
     normalized_ignored_dxcc = _normalize_ignored_dxcc(ignored_dxcc)
+    normalized_callsign_filter_mode = _normalize_callsign_filter_mode(callsign_filter_mode)
+    normalized_callsign_filter_patterns = _normalize_callsign_filter_patterns(callsign_filter_patterns)
     
     for cfg in metadata.get('configs', []):
         if cfg['id'] == config_id:
@@ -397,7 +442,10 @@ def update_config(
             cfg['wavelog_url'] = wavelog_url
             cfg['qrz_username'] = qrz_username
             cfg['ignored_dxcc'] = normalized_ignored_dxcc
-            cfg['source'] = str(source or 'wavelog').strip().lower()
+            cfg['callsign_filter_mode'] = normalized_callsign_filter_mode
+            cfg['callsign_filter_patterns'] = normalized_callsign_filter_patterns
+            if source is not None:
+                cfg['source'] = str(source or 'wavelog').strip().lower()
             cfg['adif_file_path'] = str(adif_file_path or '').strip()
             break
     else:

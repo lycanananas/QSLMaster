@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QComboBox, QMessageBox, QFileDialog,
-    QListWidget, QListWidgetItem, QRadioButton, QSizePolicy
+    QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QWidget
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen
@@ -29,8 +29,9 @@ class ConfigDialog(QDialog):
         on_config_created: Optional[Callable[[str], None]] = None
     ):
         super().__init__(parent)
-        self.setWindowTitle("QSL Configuration")
-        self.setGeometry(180, 120, 980, 680)
+        self.setWindowTitle("QSLMaster Configuration")
+        self.setGeometry(180, 120, 860, 680)
+        self.setMinimumWidth(860)
         self.on_config_deleted = on_config_deleted
         self.on_config_created = on_config_created
         self.init_ui()
@@ -46,23 +47,11 @@ class ConfigDialog(QDialog):
         layout.addLayout(config_layout)
 
         content_layout = QHBoxLayout()
+        content_layout.setSpacing(12)
 
         left_column = QVBoxLayout()
 
-        source_group = QGroupBox("Data Source")
-        source_layout = QVBoxLayout()
-        self.source_wavelog_radio = QRadioButton("Wavelog API")
-        self.source_adif_file_radio = QRadioButton("ADIF File")
-        self.source_wavelog_radio.setChecked(True)
-        self.source_wavelog_radio.toggled.connect(self.on_source_changed)
-        self.source_adif_file_radio.toggled.connect(self.on_source_changed)
-        source_layout.addWidget(self.source_wavelog_radio)
-        source_layout.addWidget(self.source_adif_file_radio)
-        source_group.setLayout(source_layout)
-        source_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        left_column.addWidget(source_group)
-
-        self.wavelog_group = QGroupBox("Wavelog Configuration")
+        self.wavelog_group = QGroupBox("Wavelog Configuration (Optional)")
         wavelog_layout = QVBoxLayout()
 
         wavelog_layout.addWidget(QLabel("Wavelog URL:"))
@@ -75,6 +64,10 @@ class ConfigDialog(QDialog):
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_input.setPlaceholderText("Your Wavelog API key")
         wavelog_layout.addWidget(self.api_key_input)
+        
+        wavelog_note = QLabel("Required only when processing from Wavelog.")
+        wavelog_note.setWordWrap(True)
+        wavelog_layout.addWidget(wavelog_note)
 
         self.wavelog_group.setLayout(wavelog_layout)
         self.wavelog_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -104,7 +97,6 @@ class ConfigDialog(QDialog):
         qrz_group.setLayout(qrz_layout)
         qrz_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         left_column.addWidget(qrz_group)
-        left_column.addStretch()
 
         logo_group = QGroupBox("QSL Logo (Optional)")
         logo_layout = QVBoxLayout()
@@ -134,6 +126,8 @@ class ConfigDialog(QDialog):
         logo_layout.addWidget(self.logo_preview)
         
         logo_group.setLayout(logo_layout)
+        logo_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        left_column.addWidget(logo_group, 1)
 
         dxcc_group = QGroupBox("Ignored DXCC (Optional)")
         dxcc_layout = QVBoxLayout()
@@ -160,13 +154,48 @@ class ConfigDialog(QDialog):
 
         dxcc_group.setLayout(dxcc_layout)
 
+        callsign_filter_group = QGroupBox("Callsign Filter (Optional)")
+        callsign_filter_layout = QVBoxLayout()
+
+        callsign_filter_layout.addWidget(QLabel("Filter mode:"))
+        self.callsign_filter_mode_combo = QComboBox()
+        self.callsign_filter_mode_combo.addItem("Disabled", "off")
+        self.callsign_filter_mode_combo.addItem("Only listed callsigns", "allow")
+        self.callsign_filter_mode_combo.addItem("Skip listed callsigns", "block")
+        self.callsign_filter_mode_combo.currentIndexChanged.connect(self.on_callsign_filter_mode_changed)
+        callsign_filter_layout.addWidget(self.callsign_filter_mode_combo)
+
+        callsign_filter_note = QLabel(
+            "Matched against full callsign. Use one pattern per line. Wildcards supported, for example SP3ABC, SP3ABC/M, SP3ABC/*."
+        )
+        callsign_filter_note.setWordWrap(True)
+        callsign_filter_layout.addWidget(callsign_filter_note)
+
+        self.callsign_filter_patterns_input = QTextEdit()
+        self.callsign_filter_patterns_input.setPlaceholderText("SP3ABC\nSP3ABC/M\nSP3ABC/*")
+        self.callsign_filter_patterns_input.setMinimumHeight(120)
+        self.callsign_filter_patterns_input.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        callsign_filter_layout.addWidget(self.callsign_filter_patterns_input)
+
+        callsign_filter_group.setLayout(callsign_filter_layout)
+        callsign_filter_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+
         right_column = QVBoxLayout()
         right_column.addWidget(dxcc_group)
-        right_column.addWidget(logo_group)
-        right_column.addStretch()
+        right_column.addWidget(callsign_filter_group, 1)
 
-        content_layout.addLayout(left_column, 1)
-        content_layout.addLayout(right_column, 1)
+        left_column_widget = QWidget()
+        left_column_widget.setLayout(left_column)
+        left_column_widget.setMinimumWidth(390)
+        left_column_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+        right_column_widget = QWidget()
+        right_column_widget.setLayout(right_column)
+        right_column_widget.setMinimumWidth(390)
+        right_column_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+        content_layout.addWidget(left_column_widget, 1)
+        content_layout.addWidget(right_column_widget, 1)
         layout.addLayout(content_layout)
 
         button_layout = QHBoxLayout()
@@ -190,24 +219,30 @@ class ConfigDialog(QDialog):
         layout.addLayout(button_layout)
         self.setLayout(layout)
         self.load_dxcc_options()
-        self.on_source_changed()
+        self.on_callsign_filter_mode_changed()
 
-    def get_selected_source(self) -> str:
-        return 'adif_file' if self.source_adif_file_radio.isChecked() else 'wavelog'
+    def get_callsign_filter_mode(self) -> str:
+        return str(self.callsign_filter_mode_combo.currentData() or 'off')
 
-    def set_selected_source(self, source: str):
-        normalized = str(source or 'wavelog').strip().lower()
-        if normalized in {'adif', 'file'}:
-            normalized = 'adif_file'
-        if normalized == 'adif_file':
-            self.source_adif_file_radio.setChecked(True)
-        else:
-            self.source_wavelog_radio.setChecked(True)
-        self.on_source_changed()
+    def set_callsign_filter_mode(self, mode: str):
+        normalized = str(mode or 'off').strip().lower()
+        index = self.callsign_filter_mode_combo.findData(normalized)
+        if index < 0:
+            index = self.callsign_filter_mode_combo.findData('off')
+        self.callsign_filter_mode_combo.setCurrentIndex(index)
+        self.on_callsign_filter_mode_changed()
 
-    def on_source_changed(self):
-        is_wavelog = self.get_selected_source() == 'wavelog'
-        self.wavelog_group.setEnabled(is_wavelog)
+    def get_callsign_filter_patterns(self):
+        return [
+            line.strip() for line in self.callsign_filter_patterns_input.toPlainText().splitlines()
+            if line.strip()
+        ]
+
+    def set_callsign_filter_patterns(self, patterns):
+        self.callsign_filter_patterns_input.setPlainText('\n'.join(patterns or []))
+
+    def on_callsign_filter_mode_changed(self):
+        self.callsign_filter_patterns_input.setEnabled(self.get_callsign_filter_mode() != 'off')
 
     def load_dxcc_options(self, force_reload: bool = False):
         selected_ids = set(self.get_selected_dxcc_ids())
@@ -358,7 +393,12 @@ class ConfigDialog(QDialog):
     def load_current_config(self):
         config_id = self.config_combo.currentData()
         if not config_id:
-            self.set_selected_source('wavelog')
+            self.wavelog_url_input.clear()
+            self.api_key_input.clear()
+            self.qrz_username_input.clear()
+            self.qrz_password_input.clear()
+            self.set_callsign_filter_mode('off')
+            self.set_callsign_filter_patterns([])
             self.logo_input.clear()
             self.update_logo_preview('')
             self.clear_dxcc_selection()
@@ -366,11 +406,12 @@ class ConfigDialog(QDialog):
 
         config = get_config(config_id)
         if config:
-            self.set_selected_source(config.get('source', 'wavelog'))
             self.wavelog_url_input.setText(config.get('wavelog_url', ''))
             self.api_key_input.setText(config.get('api_key', ''))
             self.qrz_username_input.setText(config.get('qrz_username', ''))
             self.qrz_password_input.setText(config.get('qrz_password', ''))
+            self.set_callsign_filter_mode(config.get('callsign_filter_mode', 'off'))
+            self.set_callsign_filter_patterns(config.get('callsign_filter_patterns', []))
             self.set_selected_dxcc_ids(config.get('ignored_dxcc', []))
             
             logo_path = config.get('logo_path', '')
@@ -402,16 +443,6 @@ class ConfigDialog(QDialog):
             self.update_logo_preview('')
 
     def save_config(self):
-        source = self.get_selected_source()
-        if source == 'wavelog':
-            if not self.wavelog_url_input.text():
-                QMessageBox.warning(self, "Validation Error", "Wavelog URL is required")
-                return
-
-            if not self.api_key_input.text():
-                QMessageBox.warning(self, "Validation Error", "API Key is required")
-                return
-
         config_id = self.config_combo.currentData()
         if config_id:
             reply = QMessageBox.question(
@@ -432,8 +463,8 @@ class ConfigDialog(QDialog):
                 self.api_key_input.text(),
                 self.qrz_password_input.text() if self.qrz_password_input.text() else None,
                 self.get_selected_dxcc_ids(),
-                source,
-                '',
+                self.get_callsign_filter_mode(),
+                self.get_callsign_filter_patterns(),
             ):
                 logo_file = self.logo_input.text().strip()
                 if logo_file:
@@ -447,16 +478,6 @@ class ConfigDialog(QDialog):
             self.save_config_as()
 
     def save_config_as(self):
-        source = self.get_selected_source()
-        if source == 'wavelog':
-            if not self.wavelog_url_input.text():
-                QMessageBox.warning(self, "Validation Error", "Wavelog URL is required")
-                return
-
-            if not self.api_key_input.text():
-                QMessageBox.warning(self, "Validation Error", "API Key is required")
-                return
-
         name_dialog = QDialog(self)
         name_dialog.setWindowTitle("New Configuration")
         layout = QVBoxLayout()
@@ -498,8 +519,8 @@ class ConfigDialog(QDialog):
             self.api_key_input.text(),
             self.qrz_password_input.text() if self.qrz_password_input.text() else None,
             self.get_selected_dxcc_ids(),
-            source,
-            '',
+            self.get_callsign_filter_mode(),
+            self.get_callsign_filter_patterns(),
         )
 
         if config_id:

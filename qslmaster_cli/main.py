@@ -1,10 +1,10 @@
 import argparse
 import sys
 import logging
-from pathlib import Path
 
 from .config import load_config, validate_config, ConfigError
-from .qslmaster_core import QSLProcessor, QSLProcessorError
+from .qslmaster_core import QSLProcessor
+from .pdf_labels import normalize_pdf_page_specs, normalize_pdf_page_offsets
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -36,6 +36,7 @@ Usage examples:
     %(prog)s -c config.json --from-date 2024-06-01 -o output.adif --generate-pdf labels.pdf
     %(prog)s -c config.json --list-stations-only
     %(prog)s -c config.json --station 3 -o output.adif
+    %(prog)s -c config.json --callsign-list-mode allow --callsign-pattern SP3ABC --callsign-pattern SP3ABC/* -o output.adif
         """
     )
     
@@ -83,6 +84,20 @@ Usage examples:
     )
 
     parser.add_argument(
+        '--callsign-list-mode',
+        choices=['off', 'allow', 'block'],
+        default=None,
+        help='Callsign filter mode: off, allow or block'
+    )
+
+    parser.add_argument(
+        '--callsign-pattern',
+        action='append',
+        default=None,
+        help='Callsign pattern matched against full callsign, supports wildcards like SP3ABC/*'
+    )
+
+    parser.add_argument(
         '--station',
         type=str,
         default='all',
@@ -108,6 +123,20 @@ Usage examples:
         default=None,
         help='Generate PDF labels and save to specified file (e.g., labels.pdf)'
     )
+
+    parser.add_argument(
+        '--pdf-page-offsets',
+        type=str,
+        default=None,
+        help='Comma-separated count of already used label slots for consecutive PDF pages, e.g. 4,0,8'
+    )
+
+    parser.add_argument(
+        '--pdf-page-option',
+        action='append',
+        default=None,
+        help='Per-page PDF options in format offset|skip1,skip2. Repeat for consecutive pages, e.g. --pdf-page-option 4|8,9'
+    )
     
     parser.add_argument(
         '--debug-labels',
@@ -129,6 +158,9 @@ Usage examples:
     if args.list_stations_only and args.generate_pdf:
         parser.error('--generate-pdf cannot be used with --list-stations-only')
 
+    if (args.pdf_page_offsets or args.pdf_page_option) and not args.generate_pdf:
+        parser.error('--pdf-page-offsets and --pdf-page-option require --generate-pdf')
+
     setup_logging(verbose=args.verbose)
     
     logger = logging.getLogger(__name__)
@@ -136,11 +168,21 @@ Usage examples:
     try:
         logger.info(f"Loading configuration from: {args.config}")
         config = load_config(args.config)
+        pdf_page_specs = normalize_pdf_page_specs(args.pdf_page_option)
+        if not pdf_page_specs and args.pdf_page_offsets:
+            pdf_page_specs = [
+                {'offset': offset, 'skip_slots': []}
+                for offset in normalize_pdf_page_offsets(args.pdf_page_offsets)
+            ]
 
         if args.source:
             config['source'] = args.source
         if args.adif_source:
             config['adif_file_path'] = args.adif_source
+        if args.callsign_list_mode is not None:
+            config['callsign_filter_mode'] = args.callsign_list_mode
+        if args.callsign_pattern is not None:
+            config['callsign_filter_patterns'] = args.callsign_pattern
 
         validate_config(config)
         logger.info("Configuration loaded and validated")
@@ -173,6 +215,7 @@ Usage examples:
             list_stations_only=args.list_stations_only,
             output_adif=args.output_adif,
             generate_pdf=args.generate_pdf,
+            pdf_page_specs=pdf_page_specs,
             debug_labels=args.debug_labels,
             preview_pdf=args.verbose,
         )
