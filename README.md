@@ -14,6 +14,7 @@ Download QSO data from Wavelog or a local ADIF file and prepare ADIF output and 
 - Ignored DXCC filtering and already sent QSO filtering
 - QSL bureau verification via QRZ.com (optional)
 - Country specific processing for Poland (PZK lookup)
+- Optional direct fallback when bureau lookup completes without a bureau match
 - PDF label generation (Avery 70x25.4mm A4, 33 labels per sheet)
 - Per-page PDF options for partially used label pages
 - Background processing and live progress in GUI
@@ -130,6 +131,7 @@ Wavelog connection settings remain optional until you actually start `Process wi
 
 GUI runtime-only options include:
 - PDF page options for partially used label pages
+- Include direct when no bureau is found
 - Hard abort of a running process
 
 Config file locations:
@@ -177,6 +179,13 @@ Generate PDF labels:
 ```bash
 python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
 ```
+
+Generate labels and include direct QSOs when no bureau is found in PZK or QRZ:
+```bash
+python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf --include-direct-when-no-bureau
+```
+
+The direct fallback is applied only when the lookup completes successfully but no bureau is found. Lookup errors and unavailable APIs are still treated separately and are not converted to direct automatically.
 
 Filter by full callsign with wildcard patterns:
 ```bash

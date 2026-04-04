@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from datetime import datetime
 from pathlib import Path
 from reportlab.lib.pagesizes import A4
@@ -8,6 +8,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 from .logging_handler import LogHandler
 
@@ -48,6 +50,42 @@ CONFIRMATION_OFFSET = 1.5 * mm
 CONFIRMATION_FONT_SIZE = 6
 
 
+def get_bundled_pdf_font_paths() -> Tuple[Path, Path]:
+    fonts_dir = Path(__file__).resolve().parent / 'resources' / 'fonts'
+    regular_font_path = fonts_dir / 'NimbusSans-Regular.ttf'
+    bold_font_path = fonts_dir / 'NimbusSans-Bold.ttf'
+
+    missing_paths = [
+        str(path)
+        for path in (regular_font_path, bold_font_path)
+        if not path.exists() or not path.is_file()
+    ]
+    if missing_paths:
+        raise FileNotFoundError(f"Bundled PDF font files not found: {', '.join(missing_paths)}")
+
+    return regular_font_path, bold_font_path
+
+
+def get_pdf_font_names() -> Tuple[str, str]:
+    regular_font_name = 'QSLMasterNimbusSans'
+    bold_font_name = 'QSLMasterNimbusSansBold'
+
+    if regular_font_name in pdfmetrics.getRegisteredFontNames() and bold_font_name in pdfmetrics.getRegisteredFontNames():
+        return regular_font_name, bold_font_name
+
+    regular_font_path, bold_font_path = get_bundled_pdf_font_paths()
+
+    try:
+        if regular_font_name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(regular_font_name, str(regular_font_path)))
+        if bold_font_name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(bold_font_name, str(bold_font_path)))
+    except Exception as e:
+        raise RuntimeError(f'Failed to register bundled Nimbus Sans fonts: {e}') from e
+
+    return regular_font_name, bold_font_name
+
+
 def format_date(date_str: str) -> str:
     try:
         dt = datetime.strptime(date_str, '%Y%m%d')
@@ -66,8 +104,14 @@ def format_time(time_str: str) -> str:
 
 
 def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False, logo_path: str = "logo.png"):
+    regular_font_name, bold_font_name = get_pdf_font_names()
     callsign = qso.get('CALL', 'N/A')
     via = qso.get('QSL_VIA', '').strip()
+    qsl_sent_via = str(qso.get('QSL_SENT_VIA', '') or '').strip().upper()
+    if not via and qsl_sent_via == 'D':
+        via = 'DIRECT'
+    elif not via and qsl_sent_via == 'B':
+        via = 'BUREAU'
     date = format_date(qso.get('QSO_DATE', ''))
     time = format_time(qso.get('TIME_ON', ''))
     rst_sent = qso.get('RST_SENT', '')
@@ -82,12 +126,12 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     
     current_y = y_start
     
-    c.setFont("Helvetica-Bold", HEADER_FONT_SIZE)
+    c.setFont(bold_font_name, HEADER_FONT_SIZE)
     c.drawString(x_start, current_y, "To Radio:")
-    c.setFont("Helvetica", HEADER_FONT_SIZE)
-    callsign_x = x_start + c.stringWidth("To Radio: ", "Helvetica-Bold", HEADER_FONT_SIZE)
+    c.setFont(regular_font_name, HEADER_FONT_SIZE)
+    callsign_x = x_start + c.stringWidth("To Radio: ", bold_font_name, HEADER_FONT_SIZE)
     c.drawString(callsign_x, current_y, callsign)
-    callsign_width = c.stringWidth(callsign, "Helvetica", HEADER_FONT_SIZE)
+    callsign_width = c.stringWidth(callsign, regular_font_name, HEADER_FONT_SIZE)
     c.setStrokeColor(colors.black)
     c.setLineWidth(LINE_WIDTH)
     c.line(callsign_x, current_y - UNDERLINE_OFFSET, callsign_x + callsign_width, current_y - UNDERLINE_OFFSET)
@@ -96,12 +140,12 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     via_y = current_y
     
     if via:
-        c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+        c.setFont(bold_font_name, DATA_FONT_SIZE)
         c.drawString(x_start, current_y, "Via:")
-        c.setFont("Helvetica", DATA_FONT_SIZE)
-        via_x = x_start + c.stringWidth("Via: ", "Helvetica-Bold", DATA_FONT_SIZE)
+        c.setFont(regular_font_name, DATA_FONT_SIZE)
+        via_x = x_start + c.stringWidth("Via: ", bold_font_name, DATA_FONT_SIZE)
         c.drawString(via_x, current_y, via)
-        via_width = c.stringWidth(via, "Helvetica", DATA_FONT_SIZE)
+        via_width = c.stringWidth(via, regular_font_name, DATA_FONT_SIZE)
         c.setStrokeColor(colors.black)
         c.setLineWidth(LINE_WIDTH)
         c.line(via_x, current_y - UNDERLINE_OFFSET, via_x + via_width, current_y - UNDERLINE_OFFSET)
@@ -111,39 +155,39 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     
     current_y -= TOTAL_SEPARATOR_SPACE
     
-    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(bold_font_name, DATA_FONT_SIZE)
     c.drawString(x_start, current_y, "Date:")
-    c.setFont("Helvetica", DATA_FONT_SIZE)
-    date_x = x_start + c.stringWidth("Date: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(regular_font_name, DATA_FONT_SIZE)
+    date_x = x_start + c.stringWidth("Date: ", bold_font_name, DATA_FONT_SIZE)
     c.drawString(date_x, current_y, date)
     current_y -= SPACING_BETWEEN_FIELDS
     
-    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(bold_font_name, DATA_FONT_SIZE)
     c.drawString(x_start, current_y, "Time:")
-    c.setFont("Helvetica", DATA_FONT_SIZE)
-    time_x = x_start + c.stringWidth("Time: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(regular_font_name, DATA_FONT_SIZE)
+    time_x = x_start + c.stringWidth("Time: ", bold_font_name, DATA_FONT_SIZE)
     c.drawString(time_x, current_y, f"{time} UTC")
     current_y -= SPACING_BETWEEN_FIELDS
     
-    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(bold_font_name, DATA_FONT_SIZE)
     c.drawString(x_start, current_y, "RST:")
-    c.setFont("Helvetica", DATA_FONT_SIZE)
-    rst_x = x_start + c.stringWidth("RST: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(regular_font_name, DATA_FONT_SIZE)
+    rst_x = x_start + c.stringWidth("RST: ", bold_font_name, DATA_FONT_SIZE)
     c.drawString(rst_x, current_y, rst_sent)
     current_y -= SPACING_BETWEEN_FIELDS
     
-    c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(bold_font_name, DATA_FONT_SIZE)
     c.drawString(x_start, current_y, "Mode:")
-    c.setFont("Helvetica", DATA_FONT_SIZE)
-    mode_x = x_start + c.stringWidth("Mode: ", "Helvetica-Bold", DATA_FONT_SIZE)
+    c.setFont(regular_font_name, DATA_FONT_SIZE)
+    mode_x = x_start + c.stringWidth("Mode: ", bold_font_name, DATA_FONT_SIZE)
     c.drawString(mode_x, current_y, display_mode)
     current_y -= SPACING_BETWEEN_FIELDS
     
     if band:
-        c.setFont("Helvetica-Bold", DATA_FONT_SIZE)
+        c.setFont(bold_font_name, DATA_FONT_SIZE)
         c.drawString(x_start, current_y, "Band:")
-        c.setFont("Helvetica", DATA_FONT_SIZE)
-        band_x = x_start + c.stringWidth("Band: ", "Helvetica-Bold", DATA_FONT_SIZE)
+        c.setFont(regular_font_name, DATA_FONT_SIZE)
+        band_x = x_start + c.stringWidth("Band: ", bold_font_name, DATA_FONT_SIZE)
         c.drawString(band_x, current_y, band)
     
     logo_x = x + width - LABEL_PADDING - LOGO_WIDTH - LOGO_RIGHT_MARGIN
@@ -163,7 +207,7 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     logo_center_x = logo_x + LOGO_WIDTH / 2
     confirmation_x = logo_center_x
     confirmation_y = logo_y - CONFIRMATION_OFFSET - 3 * mm
-    c.setFont("Helvetica-Bold", CONFIRMATION_FONT_SIZE)
+    c.setFont(bold_font_name, CONFIRMATION_FONT_SIZE)
     c.setFillColor(colors.black)
     c.drawCentredString(confirmation_x, confirmation_y + CONFIRMATION_FONT_SIZE, "Confirming")
     c.drawCentredString(confirmation_x, confirmation_y, "2-way QSO")
@@ -278,8 +322,9 @@ def generate_pdf_labels(
     LogHandler.get_instance().log('INFO', f"Generating PDF labels for {len(qsos)} QSOs")
     
     specs = AVERY_70X25
+    regular_font_name, _ = get_pdf_font_names()
     
-    c = canvas.Canvas(output_path, pagesize=A4)
+    c = canvas.Canvas(output_path, pagesize=A4, initialFontName=regular_font_name, initialFontSize=HEADER_FONT_SIZE)
     page_width, page_height = A4
     
     def mm_to_points(mm_val):
@@ -338,6 +383,11 @@ def preview_label_data(qsos: List[Dict], limit: int = 3):
     for i, qso in enumerate(qsos[:limit]):
         callsign = qso.get('CALL', 'N/A')
         via = qso.get('QSL_VIA', '').strip()
+        qsl_sent_via = str(qso.get('QSL_SENT_VIA', '') or '').strip().upper()
+        if not via and qsl_sent_via == 'D':
+            via = 'DIRECT'
+        elif not via and qsl_sent_via == 'B':
+            via = 'BIURO'
         date = format_date(qso.get('QSO_DATE', ''))
         time = format_time(qso.get('TIME_ON', ''))
         rst = qso.get('RST_SENT', '')

@@ -23,6 +23,7 @@ def _run_processor(
     pdf_page_specs=None,
     debug_labels: bool = False,
     station_selector=None,
+    include_direct_when_no_bureau: bool = False,
 ):
     def emit_progress(message: str) -> None:
         event_queue.put(("progress", message))
@@ -51,6 +52,7 @@ def _run_processor(
             pdf_page_specs=pdf_page_specs,
             debug_labels=debug_labels,
             preview_pdf=False,
+            include_direct_when_no_bureau=include_direct_when_no_bureau,
         )
         event_queue.put(("finished", result))
     except Exception as e:
@@ -70,6 +72,7 @@ class ProcessorWorker(QObject):
         pdf_page_specs=None,
         debug_labels: bool = False,
         station_selector=None,
+        include_direct_when_no_bureau: bool = False,
     ):
         super().__init__()
         self.config = config
@@ -81,6 +84,7 @@ class ProcessorWorker(QObject):
         self.pdf_page_specs = pdf_page_specs
         self.debug_labels = debug_labels
         self.station_selector = station_selector
+        self.include_direct_when_no_bureau = include_direct_when_no_bureau
         self.signals = ProcessorSignals()
         self.process = None
         self.event_queue = None
@@ -111,6 +115,7 @@ class ProcessorWorker(QObject):
                 self.pdf_page_specs,
                 self.debug_labels,
                 self.station_selector,
+                self.include_direct_when_no_bureau,
             ),
         )
         self.process.start()

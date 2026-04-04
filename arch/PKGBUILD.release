@@ -43,6 +43,11 @@ package() {
     install -m644 qslmaster_gui/resources/*.png "$pkgdir/usr/lib/qslmaster/qslmaster_gui/resources/"
   fi
 
+  if compgen -G qslmaster_cli/resources/fonts/* > /dev/null; then
+    install -d "$pkgdir/usr/lib/qslmaster/qslmaster_cli/resources/fonts"
+    install -m644 qslmaster_cli/resources/fonts/* "$pkgdir/usr/lib/qslmaster/qslmaster_cli/resources/fonts/"
+  fi
+
   install -d "$pkgdir/usr/lib/qslmaster/vendor"
   python3 -m pip install --no-cache-dir --no-deps --target "$pkgdir/usr/lib/qslmaster/vendor" pyhamtools==0.12.0
   python3 -m pip install --no-cache-dir --no-deps --target "$pkgdir/usr/lib/qslmaster/vendor" 'adif-io>=0.2.5'

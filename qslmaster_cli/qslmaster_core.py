@@ -466,6 +466,22 @@ class QSLProcessor:
         fullcall = str(qso.get('CALL', 'unknown') or 'unknown').strip().upper()
         return f'{fullcall} on {self.format_qso_datetime(qso)}'
 
+    @staticmethod
+    def count_qsos_by_delivery_method(qsos: List[Dict[str, Any]]) -> Dict[str, int]:
+        counts = {
+            'bureau': 0,
+            'direct': 0,
+        }
+
+        for qso in qsos:
+            delivery_method = str(qso.get('QSL_SENT_VIA', '') or '').strip().upper()
+            if delivery_method == 'B':
+                counts['bureau'] += 1
+            elif delivery_method == 'D':
+                counts['direct'] += 1
+
+        return counts
+
     def get_ignored_dxcc_set(self) -> Set[int]:
         ignored_values = self.config.get('ignored_dxcc', [])
         if not ignored_values:
@@ -594,7 +610,7 @@ class QSLProcessor:
         skipped_total = len(qsos) - len(filtered_qsos)
         return filtered_qsos, skipped_total
     
-    def process_qsos_by_dxcc(self, qsos: List) -> Dict[int, Any]:
+    def process_qsos_by_dxcc(self, qsos: List, include_direct_when_no_bureau: bool = False) -> Dict[int, Any]:
         dxcc_handlers = {
             269: process_qsos_poland,
         }
@@ -637,7 +653,7 @@ class QSLProcessor:
                         self.progress_value_callback(start_offset + current, total_qsos)
                     return callback
                 
-                result, total = handler(items, log_callback=self._log, progress_callback=make_callback(progress_counter))
+                result, total = handler(items, include_direct_when_no_bureau=include_direct_when_no_bureau, log_callback=self._log, progress_callback=make_callback(progress_counter))
                 if result is not None:
                     handler_results[dxcc] = (result, total)
                 progress_counter += len(items)
@@ -650,7 +666,7 @@ class QSLProcessor:
                     self.progress_value_callback(start_offset + current, total_qsos)
                 return callback
             
-            verified_other, total_other = process_qsos_other(other_qsos, self.qrz_api, log_callback=self._log, progress_callback=make_callback(progress_counter))
+            verified_other, total_other = process_qsos_other(other_qsos, self.qrz_api, include_direct_when_no_bureau=include_direct_when_no_bureau, log_callback=self._log, progress_callback=make_callback(progress_counter))
             if verified_other:
                 handler_results['Other'] = (verified_other, total_other)
 
@@ -700,6 +716,7 @@ class QSLProcessor:
         pdf_page_specs=None,
         debug_labels: bool = False,
         preview_pdf: bool = False,
+        include_direct_when_no_bureau: bool = False,
     ) -> Dict[str, Any]:
         try:
             self._progress("Starting QSL processing...")
@@ -820,7 +837,7 @@ class QSLProcessor:
                 self._log('INFO', f"Skipping {sent_skipped_count} QSO(s) already marked as sent")
             
             self._progress("Processing QSOs by DXCC...")
-            handler_results = self.process_qsos_by_dxcc(qsos_to_process)
+            handler_results = self.process_qsos_by_dxcc(qsos_to_process, include_direct_when_no_bureau=include_direct_when_no_bureau)
             
             all_qsl_qsos = []
             stats = {}
@@ -829,13 +846,14 @@ class QSLProcessor:
                 if result:
                     qsos_list, total_count = result
                     if qsos_list:
+                        delivery_stats = self.count_qsos_by_delivery_method(qsos_list)
                         if key == 'other':
-                            self._log('INFO', f"Other: {len(qsos_list)} out of {total_count} QSOs to send")
-                            stats['other'] = {'to_send': len(qsos_list), 'total': total_count}
+                            self._log('INFO', f"Other: {len(qsos_list)} out of {total_count} QSOs to send (bureau={delivery_stats['bureau']}, direct={delivery_stats['direct']})")
+                            stats['other'] = {'to_send': len(qsos_list), 'total': total_count, 'bureau': delivery_stats['bureau'], 'direct': delivery_stats['direct']}
                         else:
                             dxcc_name = self.get_dxcc_name(key)
-                            self._log('INFO', f"{dxcc_name}: {len(qsos_list)} out of {total_count} QSOs to send")
-                            stats[dxcc_name] = {'to_send': len(qsos_list), 'total': total_count}
+                            self._log('INFO', f"{dxcc_name}: {len(qsos_list)} out of {total_count} QSOs to send (bureau={delivery_stats['bureau']}, direct={delivery_stats['direct']})")
+                            stats[dxcc_name] = {'to_send': len(qsos_list), 'total': total_count, 'bureau': delivery_stats['bureau'], 'direct': delivery_stats['direct']}
                         all_qsl_qsos.extend(qsos_list)
             
             output_adif_path = output_adif or 'qsl_output.adif'
@@ -868,7 +886,15 @@ class QSLProcessor:
                     self._log('ERROR', f"Failed to generate PDF labels: {e}")
                     raise
             
+            delivery_method_stats = self.count_qsos_by_delivery_method(all_qsl_qsos)
+            self._log('INFO', f"Delivery methods: bureau: {delivery_method_stats['bureau']}, direct: {delivery_method_stats['direct']}")
+
             stats['total_to_send'] = len(all_qsl_qsos)
+            stats['delivery_methods'] = {
+                'bureau': delivery_method_stats['bureau'],
+                'direct': delivery_method_stats['direct'],
+                'include_direct_when_no_bureau': bool(include_direct_when_no_bureau),
+            }
             if callsign_filter_mode != 'off' and callsign_filter_patterns:
                 stats['callsign_filter'] = {
                     'mode': callsign_filter_mode,

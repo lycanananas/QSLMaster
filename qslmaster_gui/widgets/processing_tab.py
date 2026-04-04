@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QDialog, QDialogButtonBox, QRadioButton, QSpinBox
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSlot
-from PyQt6.QtGui import QFont
 from qslmaster_gui.dialogs.pdf_options_dialog import PdfOptionsDialog
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
 from qslmaster_cli.qslmaster_core import QSLProcessor
@@ -92,10 +91,6 @@ class ProcessingTab(QWidget):
         spacer_item.setFlags(Qt.ItemFlag.NoItemFlags)
         self.station_list.addItem(spacer_item)
         info_item = QListWidgetItem("Available only for Wavelog")
-        info_font = QFont()
-        info_font.setPointSize(12)
-        info_font.setBold(True)
-        info_item.setFont(info_font)
         info_item.setFlags(Qt.ItemFlag.NoItemFlags)
         self.station_list.addItem(info_item)
         self.all_stations_check.setChecked(True)
@@ -272,6 +267,10 @@ class ProcessingTab(QWidget):
         pdf_options_row.addWidget(self.pdf_options_summary_label, 1)
         output_layout.addLayout(pdf_options_row)
 
+        self.include_direct_when_no_bureau = QCheckBox("Include direct when no bureau is found")
+        self.include_direct_when_no_bureau.setChecked(False)
+        output_layout.addWidget(self.include_direct_when_no_bureau)
+
         output_group.setLayout(output_layout)
 
         options_layout = QHBoxLayout()
@@ -281,17 +280,14 @@ class ProcessingTab(QWidget):
 
         process_buttons_layout = QHBoxLayout()
         self.process_wavelog_button = QPushButton("Process with Wavelog")
-        self.process_wavelog_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.process_wavelog_button.setMinimumHeight(40)
         self.process_wavelog_button.clicked.connect(self.start_wavelog_processing)
         process_buttons_layout.addWidget(self.process_wavelog_button)
         self.process_adif_button = QPushButton("Process with ADIF")
-        self.process_adif_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.process_adif_button.setMinimumHeight(40)
         self.process_adif_button.clicked.connect(self.start_adif_processing)
         process_buttons_layout.addWidget(self.process_adif_button)
         self.abort_processing_button = QPushButton("Abort Processing")
-        self.abort_processing_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.abort_processing_button.setMinimumHeight(40)
         self.abort_processing_button.clicked.connect(self.abort_processing)
         self.abort_processing_button.setVisible(False)
@@ -596,6 +592,7 @@ class ProcessingTab(QWidget):
             pdf_page_specs=self.pdf_page_specs,
             debug_labels=self.pdf_draw_borders,
             station_selector=station_selector,
+            include_direct_when_no_bureau=self.include_direct_when_no_bureau.isChecked(),
         )
 
         self.processor_worker.signals.progress.connect(self.on_progress)
@@ -659,16 +656,20 @@ class ProcessingTab(QWidget):
             callsign_filter_stats = result['stats'].get('callsign_filter')
             ignored_dxcc_stats = result['stats'].get('ignored_dxcc')
             already_sent_stats = result['stats'].get('already_sent')
+            delivery_method_stats = result['stats'].get('delivery_methods')
+
+            if isinstance(delivery_method_stats, dict):
+                stats_text += f"Delivery methods: bureau: {int(delivery_method_stats.get('bureau', 0) or 0)}, direct: {int(delivery_method_stats.get('direct', 0) or 0)}\n"
 
             for country, stats in result['stats'].items():
-                if country in {'total_to_send', 'callsign_filter', 'ignored_dxcc', 'already_sent'}:
+                if country in {'total_to_send', 'delivery_methods', 'callsign_filter', 'ignored_dxcc', 'already_sent'}:
                     continue
                 if isinstance(stats, dict):
-                    stats_text += f"{country}: {stats.get('to_send', 0)}/{stats.get('total', 0)}\n"
+                    stats_text += f"{country}: {stats.get('to_send', 0)}/{stats.get('total', 0)} (bureau: {stats.get('bureau', 0)}, direct: {stats.get('direct', 0)})\n"
 
             if isinstance(callsign_filter_stats, dict):
                 mode = str(callsign_filter_stats.get('mode', 'off') or 'off').strip().lower()
-                mode_label = 'Allow list' if mode == 'allow' else 'Block list'
+                mode_label = 'allow list' if mode == 'allow' else 'block list'
                 skipped = int(callsign_filter_stats.get('skipped', 0) or 0)
                 stats_text += f"Callsign filter ({mode_label}): {skipped}\n"
 

@@ -34,6 +34,7 @@ Usage examples:
     %(prog)s --config config.json -o output.adif
     %(prog)s -c /path/to/config.json --from-date 2024-01-01 --to-date 2024-12-31 -o output.adif
     %(prog)s -c config.json --from-date 2024-06-01 -o output.adif --generate-pdf labels.pdf
+    %(prog)s -c config.json -o output.adif --generate-pdf labels.pdf --include-direct-when-no-bureau
     %(prog)s -c config.json --list-stations-only
     %(prog)s -c config.json --station 3 -o output.adif
     %(prog)s -c config.json --callsign-list-mode allow --callsign-pattern SP3ABC --callsign-pattern SP3ABC/* -o output.adif
@@ -122,6 +123,12 @@ Usage examples:
         type=str,
         default=None,
         help='Generate PDF labels and save to specified file (e.g., labels.pdf)'
+    )
+
+    parser.add_argument(
+        '--include-direct-when-no-bureau',
+        action='store_true',
+        help='Include QSOs as direct when PZK or QRZ lookup completes but no bureau is found'
     )
 
     parser.add_argument(
@@ -218,6 +225,7 @@ Usage examples:
             pdf_page_specs=pdf_page_specs,
             debug_labels=args.debug_labels,
             preview_pdf=args.verbose,
+            include_direct_when_no_bureau=args.include_direct_when_no_bureau,
         )
         
         if not result['success']:
