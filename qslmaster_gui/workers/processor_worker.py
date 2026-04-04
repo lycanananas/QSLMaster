@@ -20,6 +20,7 @@ def _run_processor(
     modes: Optional[str] = None,
     output_adif: Optional[str] = None,
     generate_pdf: Optional[str] = None,
+    pdf_page_specs=None,
     debug_labels: bool = False,
     station_selector=None,
 ):
@@ -47,6 +48,7 @@ def _run_processor(
             station_selector=station_selector,
             output_adif=output_adif,
             generate_pdf=generate_pdf,
+            pdf_page_specs=pdf_page_specs,
             debug_labels=debug_labels,
             preview_pdf=False,
         )
@@ -65,6 +67,7 @@ class ProcessorWorker(QObject):
         modes: Optional[str] = None,
         output_adif: Optional[str] = None,
         generate_pdf: Optional[str] = None,
+        pdf_page_specs=None,
         debug_labels: bool = False,
         station_selector=None,
     ):
@@ -75,6 +78,7 @@ class ProcessorWorker(QObject):
         self.modes = modes
         self.output_adif = output_adif
         self.generate_pdf = generate_pdf
+        self.pdf_page_specs = pdf_page_specs
         self.debug_labels = debug_labels
         self.station_selector = station_selector
         self.signals = ProcessorSignals()
@@ -104,6 +108,7 @@ class ProcessorWorker(QObject):
                 self.modes,
                 self.output_adif,
                 self.generate_pdf,
+                self.pdf_page_specs,
                 self.debug_labels,
                 self.station_selector,
             ),

@@ -174,7 +174,103 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
         c.rect(x, y - height, width, height)
 
 
-def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = False, logo_path: str = "logo.png"):
+def get_labels_per_page() -> int:
+    return int(AVERY_70X25['columns']) * int(AVERY_70X25['rows'])
+
+
+def normalize_pdf_page_spec(page_spec, labels_per_page: int) -> Dict:
+    if isinstance(page_spec, dict):
+        offset_raw = page_spec.get('offset', 0)
+        skip_raw = page_spec.get('skip_slots', [])
+    else:
+        text = str(page_spec or '').strip()
+        if not text:
+            return {'offset': 0, 'skip_slots': []}
+        if '|' in text:
+            offset_part, skip_part = text.split('|', 1)
+        elif ';' in text:
+            offset_part, skip_part = text.split(';', 1)
+        else:
+            offset_part, skip_part = text, ''
+        offset_raw = offset_part.strip() or '0'
+        skip_raw = [value.strip() for value in skip_part.split(',')] if skip_part.strip() else []
+
+    offset = int(str(offset_raw).strip() or '0')
+    if offset < 0 or offset > labels_per_page:
+        raise ValueError(f'PDF page offset must be between 0 and {labels_per_page}, got: {offset}')
+
+    skip_slots = []
+    seen_slots = set()
+    for value in skip_raw:
+        text = str(value or '').strip()
+        if not text:
+            continue
+        slot_number = int(text)
+        if slot_number < 1 or slot_number > labels_per_page:
+            raise ValueError(f'PDF skipped label must be between 1 and {labels_per_page}, got: {slot_number}')
+        if slot_number in seen_slots:
+            continue
+        seen_slots.add(slot_number)
+        skip_slots.append(slot_number)
+
+    return {
+        'offset': offset,
+        'skip_slots': sorted(skip_slots),
+    }
+
+
+def normalize_pdf_page_specs(page_specs) -> List[Dict]:
+    if page_specs is None:
+        return []
+
+    labels_per_page = get_labels_per_page()
+    normalized_specs = []
+    for value in page_specs:
+        text = str(value or '').strip()
+        if not text:
+            continue
+        normalized_specs.append(normalize_pdf_page_spec(value, labels_per_page))
+    return normalized_specs
+
+
+def normalize_pdf_page_offsets(offsets) -> List[int]:
+    if offsets is None:
+        return []
+    if isinstance(offsets, str):
+        raw_values = offsets.split(',')
+    else:
+        raw_values = offsets
+    return [spec['offset'] for spec in normalize_pdf_page_specs(raw_values)]
+
+
+def calculate_pdf_page_count(qso_count: int, page_specs: List[Dict], labels_per_page: int) -> int:
+    remaining = qso_count
+    page_count = 0
+
+    while remaining > 0:
+        page_spec = page_specs[page_count] if page_count < len(page_specs) else {'offset': 0, 'skip_slots': []}
+        blocked_slots = set(page_spec.get('skip_slots', []))
+        capacity = 0
+        for slot_number in range(page_spec.get('offset', 0) + 1, labels_per_page + 1):
+            if slot_number in blocked_slots:
+                continue
+            capacity += 1
+        if capacity <= 0:
+            page_count += 1
+            continue
+        remaining -= capacity
+        page_count += 1
+
+    return page_count
+
+
+def generate_pdf_labels(
+    qsos: List[Dict],
+    output_path: str,
+    debug_mode: bool = False,
+    logo_path: str = "logo.png",
+    page_specs=None,
+):
     if not qsos:
         LogHandler.get_instance().log('WARNING', "No QSOs to generate labels for")
         return
@@ -197,27 +293,37 @@ def generate_pdf_labels(qsos: List[Dict], output_path: str, debug_mode: bool = F
     row_gap = mm_to_points(specs['row_gap'])
     
     labels_per_page = specs['columns'] * specs['rows']
-    total_pages = (len(qsos) + labels_per_page - 1) // labels_per_page
+    normalized_page_specs = normalize_pdf_page_specs(page_specs)
+    total_pages = calculate_pdf_page_count(len(qsos), normalized_page_specs, labels_per_page)
     
     LogHandler.get_instance().log('INFO', f"Creating {total_pages} page(s) with {labels_per_page} labels per page")
+    if normalized_page_specs:
+        details = []
+        for index, page_spec in enumerate(normalized_page_specs, start=1):
+            skipped_text = ','.join(str(slot) for slot in page_spec['skip_slots']) or '-'
+            details.append(f"page {index}: offset={page_spec['offset']}, skipped={skipped_text}")
+        LogHandler.get_instance().log('INFO', f"Using PDF page options: {'; '.join(details)}")
     
     qso_index = 0
     
     for page_num in range(total_pages):
-        for row in range(specs['rows']):
-            for col in range(specs['columns']):
-                if qso_index >= len(qsos):
-                    break
-                
-                x = left_margin + col * (label_width + column_gap)
-                y = page_height - top_margin - row * (label_height + row_gap)
-                
-                draw_label(c, qsos[qso_index], x, y, label_width, label_height, debug_mode, logo_path)
-                
-                qso_index += 1
-            
+        page_spec = normalized_page_specs[page_num] if page_num < len(normalized_page_specs) else {'offset': 0, 'skip_slots': []}
+        blocked_slots = set(page_spec.get('skip_slots', []))
+        start_slot = page_spec.get('offset', 0)
+        for slot in range(start_slot, labels_per_page):
             if qso_index >= len(qsos):
                 break
+            if (slot + 1) in blocked_slots:
+                continue
+
+            row = slot // specs['columns']
+            col = slot % specs['columns']
+            x = left_margin + col * (label_width + column_gap)
+            y = page_height - top_margin - row * (label_height + row_gap)
+
+            draw_label(c, qsos[qso_index], x, y, label_width, label_height, debug_mode, logo_path)
+
+            qso_index += 1
         
         if qso_index < len(qsos):
             c.showPage()

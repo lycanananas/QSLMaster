@@ -18,7 +18,7 @@ from .wavelog import WavelogAPI, WavelogAPIError
 from .qrz import QRZAPI, QRZAPIError
 from .poland import process_qsos_poland
 from .other import process_qsos_other
-from .pdf_labels import generate_pdf_labels, preview_label_data
+from .pdf_labels import generate_pdf_labels, preview_label_data, normalize_pdf_page_specs
 
 
 logger = logging.getLogger(__name__)
@@ -697,6 +697,7 @@ class QSLProcessor:
         list_stations_only: bool = False,
         output_adif: Optional[str] = None,
         generate_pdf: Optional[str] = None,
+        pdf_page_specs=None,
         debug_labels: bool = False,
         preview_pdf: bool = False,
     ) -> Dict[str, Any]:
@@ -853,12 +854,13 @@ class QSLProcessor:
             output_pdf_path = None
             if generate_pdf:
                 try:
+                    normalized_pdf_page_specs = normalize_pdf_page_specs(pdf_page_specs)
                     if preview_pdf:
                         preview_label_data(all_qsl_qsos, limit=3)
                     
                     self._progress(f"Generating PDF labels to {generate_pdf}...")
                     logo_path = self.config.get('logo_path', 'logo.png')
-                    generate_pdf_labels(all_qsl_qsos, generate_pdf, debug_labels, logo_path)
+                    generate_pdf_labels(all_qsl_qsos, generate_pdf, debug_labels, logo_path, normalized_pdf_page_specs)
                     output_pdf_path = generate_pdf
                     self._progress(f"PDF labels generated: {generate_pdf}")
                     self._log('INFO', f"PDF labels generated: {generate_pdf}")

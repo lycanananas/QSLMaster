@@ -9,10 +9,15 @@ Download QSO data from Wavelog or a local ADIF file and prepare ADIF output and 
 - CLI and GUI based workflows
 - ADIF loading/parsing from Wavelog API or local file
 - Date range filtering
+- Runtime source selection in GUI (`Process with Wavelog` or `Process with ADIF`)
+- Callsign allow/block filtering with wildcard support against full callsign
+- Ignored DXCC filtering and already sent QSO filtering
 - QSL bureau verification via QRZ.com (optional)
 - Country specific processing for Poland (PZK lookup)
 - PDF label generation (Avery 70x25.4mm A4, 33 labels per sheet)
+- Per-page PDF options for partially used label pages
 - Background processing and live progress in GUI
+- Hard abort of processing from GUI
 
 ## Requirements
 
@@ -92,6 +97,8 @@ cp config.example.json config.json
   - `qrz_username` - Your QRZ.com username (optional)
   - `qrz_password` - Your QRZ.com password (optional)
   - `ignored_dxcc` - List of DXCC IDs to skip during QSL generation (optional)
+  - `callsign_filter_mode` - Callsign filter mode: `off`, `allow` or `block` (optional)
+  - `callsign_filter_patterns` - Full callsign patterns with wildcard support, for example `SP3ABC`, `SP3ABC/M`, `SP3ABC/*` (optional)
 
 Example config.json:
 ```json
@@ -102,7 +109,9 @@ Example config.json:
   "adif_file_path": "/path/to/input.adi",
   "qrz_username": "your_qrz_username",
   "qrz_password": "your_qrz_password",
-  "ignored_dxcc": [15, 54]
+  "ignored_dxcc": [15, 54],
+  "callsign_filter_mode": "off",
+  "callsign_filter_patterns": ["SP3ABC", "SP3ABC/*"]
 }
 ```
 
@@ -115,7 +124,13 @@ QRZ lookups require QRZ XML API access (premium subscription). Without premium a
 
 The GUI stores configuration in the user profile and keeps secrets in the system keyring.
 
-For `source: adif_file` in GUI, selecting an ADIF file in configuration is optional. The file is selected when clicking `Generate QSLs (ADIF)`.
+In GUI, the source is selected at runtime when starting processing. Use `Process with Wavelog` to download QSOs from Wavelog or `Process with ADIF` to select a local ADIF file for the current run.
+
+Wavelog connection settings remain optional until you actually start `Process with Wavelog`.
+
+GUI runtime-only options include:
+- PDF page options for partially used label pages
+- Hard abort of a running process
 
 Config file locations:
 - Linux: `~/.config/qslmaster/config.json`
@@ -162,6 +177,27 @@ Generate PDF labels:
 ```bash
 python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf
 ```
+
+Filter by full callsign with wildcard patterns:
+```bash
+python qslmaster_cli/main.py --config config.json -o output.adif --callsign-list-mode allow --callsign-pattern SP3ABC --callsign-pattern SP3ABC/*
+```
+
+Generate PDF labels using partially used pages:
+```bash
+python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf labels.pdf --pdf-page-option "4|8,9" --pdf-page-option "0|5"
+```
+
+In `--pdf-page-option`, the format is `offset|skip1,skip2`:
+- each consecutive `--pdf-page-option` defines the next page in order: first option = page 1, second option = page 2, third option = page 3, and so on
+- `offset` means how many label positions are already used from the start of the page
+- `skip1,skip2` are extra label numbers that should remain empty
+- labels are numbered from left to right, then row by row from top to bottom
+
+In the example above:
+- `--pdf-page-option "4|8,9"` applies to page 1
+- `--pdf-page-option "0|5"` applies to page 2
+- page 3 and later use no offset and no skipped labels unless additional `--pdf-page-option` values are provided
 
 Help:
 ```bash

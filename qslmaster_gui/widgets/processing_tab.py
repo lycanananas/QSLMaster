@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSlot
 from PyQt6.QtGui import QFont
+from qslmaster_gui.dialogs.pdf_options_dialog import PdfOptionsDialog
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
 from qslmaster_cli.qslmaster_core import QSLProcessor
 from qslmaster_cli.wavelog import WavelogAPI
@@ -26,6 +27,9 @@ class ProcessingTab(QWidget):
         self.qrz_disabled = False
         self.pzk_disabled = False
         self.processing_active = False
+        self.pdf_draw_borders = False
+        self.pdf_page_options_text = ''
+        self.pdf_page_specs = []
         self.init_ui()
 
     @staticmethod
@@ -41,6 +45,18 @@ class ProcessingTab(QWidget):
     def _set_processing_buttons_enabled(self, enabled: bool):
         self.process_wavelog_button.setEnabled(enabled)
         self.process_adif_button.setEnabled(enabled)
+
+    def _get_pdf_options_summary(self) -> str:
+        if not self.generate_pdf.isChecked():
+            return "Page options are disabled"
+
+        if not self.pdf_draw_borders and not self.pdf_page_specs:
+            return "No page options configured"
+
+        return "Page options are set"
+
+    def _refresh_pdf_options_summary(self):
+        self.pdf_options_summary_label.setText(self._get_pdf_options_summary())
 
     def _set_processing_state(self, active: bool, aborting: bool = False):
         self.processing_active = active
@@ -247,8 +263,14 @@ class ProcessingTab(QWidget):
         self.output_pdf_layout.addWidget(self.browse_pdf_btn)
         output_layout.addLayout(self.output_pdf_layout)
 
-        self.debug_labels = QCheckBox("Debug Labels (draw borders)")
-        output_layout.addWidget(self.debug_labels)
+        pdf_options_row = QHBoxLayout()
+        self.pdf_options_button = QPushButton("PDF Options...")
+        self.pdf_options_button.clicked.connect(self.open_pdf_options_dialog)
+        pdf_options_row.addWidget(self.pdf_options_button)
+        self.pdf_options_summary_label = QLabel()
+        self.pdf_options_summary_label.setWordWrap(True)
+        pdf_options_row.addWidget(self.pdf_options_summary_label, 1)
+        output_layout.addLayout(pdf_options_row)
 
         output_group.setLayout(output_layout)
 
@@ -297,6 +319,7 @@ class ProcessingTab(QWidget):
 
         self.on_date_filter_toggled()
         self.on_generate_pdf_toggled()
+        self._refresh_pdf_options_summary()
 
     def on_date_filter_toggled(self):
         enabled = self.use_date_filter.isChecked()
@@ -401,7 +424,21 @@ class ProcessingTab(QWidget):
         enabled = self.generate_pdf.isChecked()
         self.output_pdf_input.setEnabled(enabled)
         self.browse_pdf_btn.setEnabled(enabled)
-        self.debug_labels.setEnabled(enabled)
+        self.pdf_options_button.setEnabled(enabled)
+        self._refresh_pdf_options_summary()
+
+    def open_pdf_options_dialog(self):
+        dialog = PdfOptionsDialog(self.pdf_draw_borders, self.pdf_page_options_text, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            self.pdf_page_specs = dialog.get_page_specs()
+        except ValueError as e:
+            QMessageBox.warning(self, "PDF Page Options Error", str(e))
+            return
+        self.pdf_draw_borders = dialog.get_draw_borders()
+        self.pdf_page_options_text = dialog.get_page_options_text()
+        self._refresh_pdf_options_summary()
 
     def on_log_level_changed(self, level_name: str):
         level = getattr(logging, level_name, logging.INFO)
@@ -556,7 +593,8 @@ class ProcessingTab(QWidget):
             modes=modes,
             output_adif=output_adif,
             generate_pdf=output_pdf,
-            debug_labels=self.debug_labels.isChecked(),
+            pdf_page_specs=self.pdf_page_specs,
+            debug_labels=self.pdf_draw_borders,
             station_selector=station_selector,
         )
 
