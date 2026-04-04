@@ -505,7 +505,7 @@ class QSLProcessor:
                 if qso.get('QSL_SENT', '').strip().upper() == 'Y':
                     qso_date = datetime.strptime(qso.get('QSO_DATE', '19000101'), '%Y%m%d').strftime('%Y-%m-%d')
                     qso_time = datetime.strptime(qso.get('TIME_ON', '000000'), '%H%M%S').strftime('%H:%M:%S')
-                    self._log('DEBUG', f"Skipping QSO with {fullcall} on {qso_date} at {qso_time} - already marked as sent")
+                    self._log('INFO', f"Skipping QSO with {fullcall} on {qso_date} at {qso_time} - already marked as sent")
                     continue
 
                 if adif_id in buckets:
@@ -679,10 +679,7 @@ class QSLProcessor:
             
             self.print_qso_summary(qsos)
             
-            qsos_to_process = [qso for qso in qsos if qso.get('QSL_SENT', '').strip().upper() != 'Y']
-            skipped_count = len(qsos) - len(qsos_to_process)
-            if skipped_count > 0:
-                self._log('INFO', f"Skipping {skipped_count} QSO(s) that already have QSL_SENT marked")
+            qsos_to_process = qsos
 
             ignored_ids = sorted(self.get_ignored_dxcc_set())
             if ignored_ids:

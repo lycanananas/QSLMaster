@@ -29,20 +29,18 @@ class ProcessingTab(QWidget):
         self.init_ui()
 
     @staticmethod
-    def _get_source_type(config) -> str:
-        source = str((config or {}).get('source', 'wavelog')).strip().lower()
+    def _normalize_source(source: str) -> str:
+        source = str(source or 'wavelog').strip().lower()
         if source in {'adif', 'file'}:
             return 'adif_file'
         return source
 
-    def _update_process_button_label(self):
-        if not hasattr(self, 'process_button'):
-            return
-        source = self._get_source_type(self.current_config)
-        if source == 'adif_file':
-            self.process_button.setText("Generate QSLs (ADIF)")
-        else:
-            self.process_button.setText("Generate QSLs (Wavelog)")
+    def _has_wavelog_config(self, config) -> bool:
+        return bool(config and config.get('api_key') and config.get('wavelog_url'))
+
+    def _set_processing_buttons_enabled(self, enabled: bool):
+        self.process_wavelog_button.setEnabled(enabled)
+        self.process_adif_button.setEnabled(enabled)
 
     def _select_adif_source_file(self, suggested_path: str = '') -> str:
         start_path = str(suggested_path or '').strip()
@@ -85,27 +83,18 @@ class ProcessingTab(QWidget):
 
     def set_config(self, config):
         self.current_config = config
-        self._update_process_button_label()
-        source = self._get_source_type(config)
-        is_wavelog = source == 'wavelog'
-        self.refresh_station_btn.setEnabled(is_wavelog)
+        has_wavelog_config = self._has_wavelog_config(config)
+        self.refresh_station_btn.setEnabled(has_wavelog_config)
 
-        if not is_wavelog:
+        if not has_wavelog_config:
             self._set_station_controls_for_adif()
             return
 
         self._set_station_controls_for_wavelog()
-
-        if not config or not config.get('api_key') or not config.get('wavelog_url'):
-            self.station_list.clear()
-            self.all_stations_check.setChecked(True)
-            self.station_list.setEnabled(False)
-            self.stations_loaded = False
-        else:
-            self.load_station_list(config)
+        self.load_station_list(config)
 
     def load_station_list(self, config):
-        if self._get_source_type(config) != 'wavelog':
+        if not self._has_wavelog_config(config):
             self._set_station_controls_for_adif()
             return
         self._set_station_controls_for_wavelog()
@@ -134,7 +123,7 @@ class ProcessingTab(QWidget):
             self.station_list.setEnabled(False)
             self.stations_loaded = False
     def on_refresh_station_list(self):
-        if self.current_config and self._get_source_type(self.current_config) == 'wavelog':
+        if self._has_wavelog_config(self.current_config):
             self.load_station_list(self.current_config)
 
     def init_ui(self):
@@ -259,13 +248,18 @@ class ProcessingTab(QWidget):
         options_layout.addWidget(output_group, 2)
         layout.addLayout(options_layout)
 
-        process_button = QPushButton("Generate QSLs")
-        process_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        process_button.setMinimumHeight(40)
-        process_button.clicked.connect(self.start_processing)
-        layout.addWidget(process_button)
-        self.process_button = process_button
-        self._update_process_button_label()
+        process_buttons_layout = QHBoxLayout()
+        self.process_wavelog_button = QPushButton("Process with Wavelog")
+        self.process_wavelog_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.process_wavelog_button.setMinimumHeight(40)
+        self.process_wavelog_button.clicked.connect(self.start_wavelog_processing)
+        process_buttons_layout.addWidget(self.process_wavelog_button)
+        self.process_adif_button = QPushButton("Process with ADIF")
+        self.process_adif_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.process_adif_button.setMinimumHeight(40)
+        self.process_adif_button.clicked.connect(self.start_adif_processing)
+        process_buttons_layout.addWidget(self.process_adif_button)
+        layout.addLayout(process_buttons_layout)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(True)
@@ -463,12 +457,22 @@ class ProcessingTab(QWidget):
             self.output_pdf_input.setText(file_path)
 
     def start_processing(self):
+        self.start_wavelog_processing()
+
+    def start_wavelog_processing(self):
+        self._start_processing('wavelog')
+
+    def start_adif_processing(self):
+        self._start_processing('adif_file')
+
+    def _start_processing(self, source: str):
         if not self.current_config:
             QMessageBox.warning(self, "Error", "No configuration loaded")
             return
 
         config_to_use = self.current_config.copy()
-        source = self._get_source_type(config_to_use)
+        source = self._normalize_source(source)
+        config_to_use['source'] = source
 
         if source == 'wavelog':
             if not config_to_use.get('api_key'):
@@ -552,7 +556,7 @@ class ProcessingTab(QWidget):
         self.qrz_disabled = False
         self.pzk_disabled = False
 
-        self.process_button.setEnabled(False)
+        self._set_processing_buttons_enabled(False)
         self.thread_pool.start(self.processor_worker)
 
     @pyqtSlot(str)
@@ -581,7 +585,7 @@ class ProcessingTab(QWidget):
     @pyqtSlot(dict)
     def on_finished(self, result: dict):
         self.progress_bar.setVisible(True)
-        self.process_button.setEnabled(True)
+        self._set_processing_buttons_enabled(True)
 
         if result['success']:
             stats_text = "Processing completed successfully!\n\n"
@@ -623,5 +627,5 @@ class ProcessingTab(QWidget):
     @pyqtSlot(str)
     def on_error(self, error_message: str):
         self.progress_bar.setVisible(False)
-        self.process_button.setEnabled(True)
+        self._set_processing_buttons_enabled(True)
         QMessageBox.critical(self, "Processing Error", f"An error occurred: {error_message}")

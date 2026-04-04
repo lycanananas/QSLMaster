@@ -305,7 +305,7 @@ def create_config(
     api_key: str,
     qrz_password: Optional[str] = None,
     ignored_dxcc: Optional[List[Any]] = None,
-    source: str = 'wavelog',
+    source: Optional[str] = None,
     adif_file_path: str = '',
 ) -> Optional[str]:
     config_id = str(uuid.uuid4())
@@ -385,7 +385,7 @@ def update_config(
     api_key: str,
     qrz_password: Optional[str] = None,
     ignored_dxcc: Optional[List[Any]] = None,
-    source: str = 'wavelog',
+    source: Optional[str] = None,
     adif_file_path: str = '',
 ) -> bool:
     metadata = _load_configs_metadata()
@@ -397,7 +397,8 @@ def update_config(
             cfg['wavelog_url'] = wavelog_url
             cfg['qrz_username'] = qrz_username
             cfg['ignored_dxcc'] = normalized_ignored_dxcc
-            cfg['source'] = str(source or 'wavelog').strip().lower()
+            if source is not None:
+                cfg['source'] = str(source or 'wavelog').strip().lower()
             cfg['adif_file_path'] = str(adif_file_path or '').strip()
             break
     else:
