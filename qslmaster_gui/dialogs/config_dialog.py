@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QComboBox, QMessageBox, QFileDialog,
-    QListWidget, QListWidgetItem, QSizePolicy
+    QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QWidget
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen
@@ -29,8 +29,9 @@ class ConfigDialog(QDialog):
         on_config_created: Optional[Callable[[str], None]] = None
     ):
         super().__init__(parent)
-        self.setWindowTitle("QSL Configuration")
-        self.setGeometry(180, 120, 980, 680)
+        self.setWindowTitle("QSLMaster Configuration")
+        self.setGeometry(180, 120, 860, 680)
+        self.setMinimumWidth(860)
         self.on_config_deleted = on_config_deleted
         self.on_config_created = on_config_created
         self.init_ui()
@@ -46,10 +47,11 @@ class ConfigDialog(QDialog):
         layout.addLayout(config_layout)
 
         content_layout = QHBoxLayout()
+        content_layout.setSpacing(12)
 
         left_column = QVBoxLayout()
 
-        self.wavelog_group = QGroupBox("Wavelog Configuration")
+        self.wavelog_group = QGroupBox("Wavelog Configuration (Optional)")
         wavelog_layout = QVBoxLayout()
 
         wavelog_layout.addWidget(QLabel("Wavelog URL:"))
@@ -63,7 +65,7 @@ class ConfigDialog(QDialog):
         self.api_key_input.setPlaceholderText("Your Wavelog API key")
         wavelog_layout.addWidget(self.api_key_input)
         
-        wavelog_note = QLabel("Optional! Required only when processing from Wavelog.")
+        wavelog_note = QLabel("Required only when processing from Wavelog.")
         wavelog_note.setWordWrap(True)
         wavelog_layout.addWidget(wavelog_note)
 
@@ -124,9 +126,8 @@ class ConfigDialog(QDialog):
         logo_layout.addWidget(self.logo_preview)
         
         logo_group.setLayout(logo_layout)
-        logo_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        left_column.addWidget(logo_group)
-        left_column.addStretch()
+        logo_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        left_column.addWidget(logo_group, 1)
 
         dxcc_group = QGroupBox("Ignored DXCC (Optional)")
         dxcc_layout = QVBoxLayout()
@@ -153,12 +154,48 @@ class ConfigDialog(QDialog):
 
         dxcc_group.setLayout(dxcc_layout)
 
+        callsign_filter_group = QGroupBox("Callsign Filter (Optional)")
+        callsign_filter_layout = QVBoxLayout()
+
+        callsign_filter_layout.addWidget(QLabel("Filter mode:"))
+        self.callsign_filter_mode_combo = QComboBox()
+        self.callsign_filter_mode_combo.addItem("Disabled", "off")
+        self.callsign_filter_mode_combo.addItem("Only listed callsigns", "allow")
+        self.callsign_filter_mode_combo.addItem("Skip listed callsigns", "block")
+        self.callsign_filter_mode_combo.currentIndexChanged.connect(self.on_callsign_filter_mode_changed)
+        callsign_filter_layout.addWidget(self.callsign_filter_mode_combo)
+
+        callsign_filter_note = QLabel(
+            "Matched against full callsign. Use one pattern per line. Wildcards supported, for example SP3ABC, SP3ABC/M, SP3ABC/*."
+        )
+        callsign_filter_note.setWordWrap(True)
+        callsign_filter_layout.addWidget(callsign_filter_note)
+
+        self.callsign_filter_patterns_input = QTextEdit()
+        self.callsign_filter_patterns_input.setPlaceholderText("SP3ABC\nSP3ABC/M\nSP3ABC/*")
+        self.callsign_filter_patterns_input.setMinimumHeight(120)
+        self.callsign_filter_patterns_input.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        callsign_filter_layout.addWidget(self.callsign_filter_patterns_input)
+
+        callsign_filter_group.setLayout(callsign_filter_layout)
+        callsign_filter_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+
         right_column = QVBoxLayout()
         right_column.addWidget(dxcc_group)
-        right_column.addStretch()
+        right_column.addWidget(callsign_filter_group, 1)
 
-        content_layout.addLayout(left_column, 1)
-        content_layout.addLayout(right_column, 1)
+        left_column_widget = QWidget()
+        left_column_widget.setLayout(left_column)
+        left_column_widget.setMinimumWidth(390)
+        left_column_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+        right_column_widget = QWidget()
+        right_column_widget.setLayout(right_column)
+        right_column_widget.setMinimumWidth(390)
+        right_column_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+        content_layout.addWidget(left_column_widget, 1)
+        content_layout.addWidget(right_column_widget, 1)
         layout.addLayout(content_layout)
 
         button_layout = QHBoxLayout()
@@ -182,6 +219,30 @@ class ConfigDialog(QDialog):
         layout.addLayout(button_layout)
         self.setLayout(layout)
         self.load_dxcc_options()
+        self.on_callsign_filter_mode_changed()
+
+    def get_callsign_filter_mode(self) -> str:
+        return str(self.callsign_filter_mode_combo.currentData() or 'off')
+
+    def set_callsign_filter_mode(self, mode: str):
+        normalized = str(mode or 'off').strip().lower()
+        index = self.callsign_filter_mode_combo.findData(normalized)
+        if index < 0:
+            index = self.callsign_filter_mode_combo.findData('off')
+        self.callsign_filter_mode_combo.setCurrentIndex(index)
+        self.on_callsign_filter_mode_changed()
+
+    def get_callsign_filter_patterns(self):
+        return [
+            line.strip() for line in self.callsign_filter_patterns_input.toPlainText().splitlines()
+            if line.strip()
+        ]
+
+    def set_callsign_filter_patterns(self, patterns):
+        self.callsign_filter_patterns_input.setPlainText('\n'.join(patterns or []))
+
+    def on_callsign_filter_mode_changed(self):
+        self.callsign_filter_patterns_input.setEnabled(self.get_callsign_filter_mode() != 'off')
 
     def load_dxcc_options(self, force_reload: bool = False):
         selected_ids = set(self.get_selected_dxcc_ids())
@@ -336,6 +397,8 @@ class ConfigDialog(QDialog):
             self.api_key_input.clear()
             self.qrz_username_input.clear()
             self.qrz_password_input.clear()
+            self.set_callsign_filter_mode('off')
+            self.set_callsign_filter_patterns([])
             self.logo_input.clear()
             self.update_logo_preview('')
             self.clear_dxcc_selection()
@@ -347,6 +410,8 @@ class ConfigDialog(QDialog):
             self.api_key_input.setText(config.get('api_key', ''))
             self.qrz_username_input.setText(config.get('qrz_username', ''))
             self.qrz_password_input.setText(config.get('qrz_password', ''))
+            self.set_callsign_filter_mode(config.get('callsign_filter_mode', 'off'))
+            self.set_callsign_filter_patterns(config.get('callsign_filter_patterns', []))
             self.set_selected_dxcc_ids(config.get('ignored_dxcc', []))
             
             logo_path = config.get('logo_path', '')
@@ -398,6 +463,8 @@ class ConfigDialog(QDialog):
                 self.api_key_input.text(),
                 self.qrz_password_input.text() if self.qrz_password_input.text() else None,
                 self.get_selected_dxcc_ids(),
+                self.get_callsign_filter_mode(),
+                self.get_callsign_filter_patterns(),
             ):
                 logo_file = self.logo_input.text().strip()
                 if logo_file:
@@ -452,6 +519,8 @@ class ConfigDialog(QDialog):
             self.api_key_input.text(),
             self.qrz_password_input.text() if self.qrz_password_input.text() else None,
             self.get_selected_dxcc_ids(),
+            self.get_callsign_filter_mode(),
+            self.get_callsign_filter_patterns(),
         )
 
         if config_id:

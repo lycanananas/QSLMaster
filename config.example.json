@@ -5,5 +5,7 @@
   "adif_file_path": "/path/to/input.adi",
   "qrz_username": "your_qrz_username",
   "qrz_password": "your_qrz_password",
-  "ignored_dxcc": [15, 54]
+  "ignored_dxcc": [15, 54],
+  "callsign_filter_mode": "off",
+  "callsign_filter_patterns": ["SP3ABC", "SP3ABC/*"]
 }

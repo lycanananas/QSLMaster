@@ -1,7 +1,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 
 class ConfigError(Exception):
@@ -9,6 +9,49 @@ class ConfigError(Exception):
 
 
 ALLOWED_SOURCES = {'wavelog', 'adif_file'}
+ALLOWED_CALLSIGN_FILTER_MODES = {'off', 'allow', 'block'}
+
+
+def normalize_callsign_filter_mode(mode: Any) -> str:
+    normalized = str(mode or 'off').strip().lower()
+    aliases = {
+        'allowlist': 'allow',
+        'whitelist': 'allow',
+        'only': 'allow',
+        'blocklist': 'block',
+        'blacklist': 'block',
+        'skip': 'block',
+        'disabled': 'off',
+        'none': 'off',
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in ALLOWED_CALLSIGN_FILTER_MODES:
+        normalized = 'off'
+    return normalized
+
+
+def normalize_callsign_filter_patterns(patterns: Any) -> List[str]:
+    if not patterns:
+        return []
+
+    if isinstance(patterns, str):
+        raw_values = patterns.splitlines()
+    elif isinstance(patterns, list):
+        raw_values = patterns
+    else:
+        raise ConfigError('callsign_filter_patterns must be a list of callsign patterns')
+
+    normalized = []
+    seen = set()
+    for value in raw_values:
+        if not isinstance(value, str):
+            raise ConfigError(f'callsign_filter_patterns contains invalid value: {value}')
+        pattern = value.strip().upper()
+        if not pattern or pattern in seen:
+            continue
+        normalized.append(pattern)
+        seen.add(pattern)
+    return normalized
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -41,14 +84,21 @@ def load_config(config_path: str) -> Dict[str, Any]:
         'qrz_password',
         'logo_path',
         'ignored_dxcc',
+        'callsign_filter_mode',
+        'callsign_filter_patterns',
     ]
 
     for field in optional_fields:
         if field not in config:
-            if field == 'ignored_dxcc':
+            if field in {'ignored_dxcc', 'callsign_filter_patterns'}:
                 config[field] = []
+            elif field == 'callsign_filter_mode':
+                config[field] = 'off'
             else:
                 config[field] = ''
+
+    config['callsign_filter_mode'] = normalize_callsign_filter_mode(config.get('callsign_filter_mode', 'off'))
+    config['callsign_filter_patterns'] = normalize_callsign_filter_patterns(config.get('callsign_filter_patterns', []))
     
     return config
 
@@ -102,5 +152,14 @@ def validate_config(config: Dict[str, Any]) -> bool:
         normalized_ignored_dxcc.append(dxcc_id)
 
     config['ignored_dxcc'] = sorted(set(normalized_ignored_dxcc))
+
+    callsign_filter_mode = normalize_callsign_filter_mode(config.get('callsign_filter_mode', 'off'))
+    if callsign_filter_mode not in ALLOWED_CALLSIGN_FILTER_MODES:
+        raise ConfigError('callsign_filter_mode must be one of: off, allow, block')
+    config['callsign_filter_mode'] = callsign_filter_mode
+
+    config['callsign_filter_patterns'] = normalize_callsign_filter_patterns(
+        config.get('callsign_filter_patterns', [])
+    )
     
     return True

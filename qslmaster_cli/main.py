@@ -1,10 +1,9 @@
 import argparse
 import sys
 import logging
-from pathlib import Path
 
 from .config import load_config, validate_config, ConfigError
-from .qslmaster_core import QSLProcessor, QSLProcessorError
+from .qslmaster_core import QSLProcessor
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -36,6 +35,7 @@ Usage examples:
     %(prog)s -c config.json --from-date 2024-06-01 -o output.adif --generate-pdf labels.pdf
     %(prog)s -c config.json --list-stations-only
     %(prog)s -c config.json --station 3 -o output.adif
+    %(prog)s -c config.json --callsign-list-mode allow --callsign-pattern SP3ABC --callsign-pattern SP3ABC/* -o output.adif
         """
     )
     
@@ -80,6 +80,20 @@ Usage examples:
         type=str,
         default=None,
         help='Filter QSOs by mode (comma-separated: CW,SSB,AM,FM,FT8,DIGI)'
+    )
+
+    parser.add_argument(
+        '--callsign-list-mode',
+        choices=['off', 'allow', 'block'],
+        default=None,
+        help='Callsign filter mode: off, allow or block'
+    )
+
+    parser.add_argument(
+        '--callsign-pattern',
+        action='append',
+        default=None,
+        help='Callsign pattern matched against full callsign, supports wildcards like SP3ABC/*'
     )
 
     parser.add_argument(
@@ -141,6 +155,10 @@ Usage examples:
             config['source'] = args.source
         if args.adif_source:
             config['adif_file_path'] = args.adif_source
+        if args.callsign_list_mode is not None:
+            config['callsign_filter_mode'] = args.callsign_list_mode
+        if args.callsign_pattern is not None:
+            config['callsign_filter_patterns'] = args.callsign_pattern
 
         validate_config(config)
         logger.info("Configuration loaded and validated")

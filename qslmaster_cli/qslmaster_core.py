@@ -3,6 +3,7 @@ import sys
 import json
 import plistlib
 import adif_io
+import fnmatch
 import requests
 import zipfile
 import io
@@ -439,6 +440,32 @@ class QSLProcessor:
         except Exception:
             return str(dxcc_id)
 
+    def format_qso_datetime(self, qso: Dict[str, Any]) -> str:
+        qso_date_raw = str(qso.get('QSO_DATE', '') or '').strip()
+        qso_time_raw = str(qso.get('TIME_ON', '') or '').strip()
+
+        qso_date_text = qso_date_raw or 'unknown-date'
+        if qso_date_raw:
+            try:
+                qso_date_text = datetime.strptime(qso_date_raw, '%Y%m%d').strftime('%Y-%m-%d')
+            except ValueError:
+                pass
+
+        qso_time_text = qso_time_raw or 'unknown-time'
+        if qso_time_raw:
+            for time_format in ('%H%M%S', '%H%M'):
+                try:
+                    qso_time_text = datetime.strptime(qso_time_raw, time_format).strftime('%H:%M:%S')
+                    break
+                except ValueError:
+                    continue
+
+        return f'{qso_date_text} {qso_time_text}'
+
+    def format_qso_log_label(self, qso: Dict[str, Any]) -> str:
+        fullcall = str(qso.get('CALL', 'unknown') or 'unknown').strip().upper()
+        return f'{fullcall} on {self.format_qso_datetime(qso)}'
+
     def get_ignored_dxcc_set(self) -> Set[int]:
         ignored_values = self.config.get('ignored_dxcc', [])
         if not ignored_values:
@@ -474,7 +501,7 @@ class QSLProcessor:
                 if adif_id in ignored_dxcc:
                     skipped_by_dxcc[adif_id] = skipped_by_dxcc.get(adif_id, 0) + 1
                     dxcc_name = self.get_dxcc_name(adif_id)
-                    self._log('INFO', f"Ignored QSO for callsign {fullcall} (homecall: {homecall}) by DXCC {dxcc_name} ({adif_id})")
+                    self._log('INFO', f"Skipping QSO with {self.format_qso_log_label(qso)} - ignored DXCC: {dxcc_name} ({adif_id})")
                     continue
             except Exception:
                 pass
@@ -483,6 +510,89 @@ class QSLProcessor:
 
         skipped_total = len(qsos) - len(filtered_qsos)
         return filtered_qsos, skipped_total, skipped_by_dxcc
+
+    def get_callsign_filter_mode(self) -> str:
+        mode = str(self.config.get('callsign_filter_mode', 'off') or 'off').strip().lower()
+        aliases = {
+            'allowlist': 'allow',
+            'whitelist': 'allow',
+            'only': 'allow',
+            'blocklist': 'block',
+            'blacklist': 'block',
+            'skip': 'block',
+            'disabled': 'off',
+            'none': 'off',
+        }
+        mode = aliases.get(mode, mode)
+        if mode not in {'off', 'allow', 'block'}:
+            mode = 'off'
+        return mode
+
+    def get_callsign_filter_patterns(self) -> List[str]:
+        patterns = self.config.get('callsign_filter_patterns', [])
+        if not patterns:
+            return []
+
+        normalized = []
+        seen = set()
+        for value in patterns:
+            pattern = str(value or '').strip().upper()
+            if not pattern or pattern in seen:
+                continue
+            normalized.append(pattern)
+            seen.add(pattern)
+        return normalized
+
+    def filter_qsos_by_callsign_patterns(self, qsos: List) -> Tuple[List, int, Dict[str, int]]:
+        mode = self.get_callsign_filter_mode()
+        patterns = self.get_callsign_filter_patterns()
+        if mode == 'off' or not patterns:
+            return qsos, 0, {}
+
+        filtered_qsos = []
+        skipped_by_pattern: Dict[str, int] = {}
+
+        for qso in qsos:
+            fullcall = str(qso.get('CALL', '') or '').strip().upper()
+            matched_pattern = None
+            for pattern in patterns:
+                if fnmatch.fnmatch(fullcall, pattern):
+                    matched_pattern = pattern
+                    break
+
+            should_skip = False
+            if mode == 'allow':
+                should_skip = matched_pattern is None
+                if should_skip:
+                    skipped_by_pattern['<not-listed>'] = skipped_by_pattern.get('<not-listed>', 0) + 1
+            else:
+                should_skip = matched_pattern is not None
+                if should_skip and matched_pattern is not None:
+                    skipped_by_pattern[matched_pattern] = skipped_by_pattern.get(matched_pattern, 0) + 1
+
+            if should_skip:
+                if mode == 'allow':
+                    self._log('INFO', f"Skipping QSO with {self.format_qso_log_label(qso)} - not in allowlist")
+                else:
+                    self._log('INFO', f"Skipping QSO with {self.format_qso_log_label(qso)} - matches block pattern \"{matched_pattern}\"")
+                continue
+
+            filtered_qsos.append(qso)
+
+        skipped_total = len(qsos) - len(filtered_qsos)
+        return filtered_qsos, skipped_total, skipped_by_pattern
+
+    def filter_qsos_by_sent_status(self, qsos: List) -> Tuple[List, int]:
+        filtered_qsos = []
+
+        for qso in qsos:
+            if str(qso.get('QSL_SENT', '') or '').strip().upper() == 'Y':
+                self._log('INFO', f"Skipping QSO with {self.format_qso_log_label(qso)} - already marked as QSL sent")
+                continue
+            filtered_qsos.append(qso)
+
+        skipped_total = len(qsos) - len(filtered_qsos)
+        return filtered_qsos, skipped_total
     
     def process_qsos_by_dxcc(self, qsos: List) -> Dict[int, Any]:
         dxcc_handlers = {
@@ -501,12 +611,6 @@ class QSLProcessor:
 
                 homecall = self.callinfo.get_homecall(fullcall)
                 adif_id = self.callinfo.get_adif_id(homecall)
-                
-                if qso.get('QSL_SENT', '').strip().upper() == 'Y':
-                    qso_date = datetime.strptime(qso.get('QSO_DATE', '19000101'), '%Y%m%d').strftime('%Y-%m-%d')
-                    qso_time = datetime.strptime(qso.get('TIME_ON', '000000'), '%H%M%S').strftime('%H:%M:%S')
-                    self._log('INFO', f"Skipping QSO with {fullcall} on {qso_date} at {qso_time} - already marked as sent")
-                    continue
 
                 if adif_id in buckets:
                     buckets[adif_id].append(qso)
@@ -680,8 +784,24 @@ class QSLProcessor:
             self.print_qso_summary(qsos)
             
             qsos_to_process = qsos
+            callsign_filter_mode = self.get_callsign_filter_mode()
+            callsign_filter_patterns = self.get_callsign_filter_patterns()
+            callsign_filter_skipped_count = 0
+
+            if callsign_filter_mode != 'off' and callsign_filter_patterns:
+                qsos_to_process, callsign_filter_skipped_count, callsign_filter_breakdown = self.filter_qsos_by_callsign_patterns(qsos_to_process)
+                if callsign_filter_skipped_count > 0:
+                    breakdown_values = [
+                        f'"{pattern}"={count}'
+                        for pattern, count in callsign_filter_breakdown.items()
+                    ]
+                    mode_label = 'allowlist' if callsign_filter_mode == 'allow' else 'blocklist'
+                    self._log('INFO', f"Skipping {callsign_filter_skipped_count} QSO(s) by callsign {mode_label}: {', '.join(breakdown_values)}")
+                else:
+                    self._log('INFO', f"Callsign filter active, no matching QSO changes for mode={callsign_filter_mode}")
 
             ignored_ids = sorted(self.get_ignored_dxcc_set())
+            ignored_skipped_count = 0
             if ignored_ids:
                 qsos_to_process, ignored_skipped_count, ignored_breakdown = self.filter_qsos_by_ignored_dxcc(qsos_to_process)
                 if ignored_skipped_count > 0:
@@ -692,6 +812,11 @@ class QSLProcessor:
                     self._log('INFO', f"Skipping {ignored_skipped_count} QSO(s) by ignored DXCC: {', '.join(breakdown_values)}")
                 else:
                     self._log('INFO', f"Ignored DXCC active, no matching QSOs found: {ignored_ids}")
+
+            sent_skipped_count = 0
+            qsos_to_process, sent_skipped_count = self.filter_qsos_by_sent_status(qsos_to_process)
+            if sent_skipped_count > 0:
+                self._log('INFO', f"Skipping {sent_skipped_count} QSO(s) already marked as sent")
             
             self._progress("Processing QSOs by DXCC...")
             handler_results = self.process_qsos_by_dxcc(qsos_to_process)
@@ -742,10 +867,20 @@ class QSLProcessor:
                     raise
             
             stats['total_to_send'] = len(all_qsl_qsos)
+            if callsign_filter_mode != 'off' and callsign_filter_patterns:
+                stats['callsign_filter'] = {
+                    'mode': callsign_filter_mode,
+                    'patterns': callsign_filter_patterns,
+                    'skipped': callsign_filter_skipped_count,
+                }
             if ignored_ids:
                 stats['ignored_dxcc'] = {
                     'ids': ignored_ids,
-                    'skipped': len(qsos) - skipped_count - len(qsos_to_process),
+                    'skipped': ignored_skipped_count,
+                }
+            if sent_skipped_count > 0:
+                stats['already_sent'] = {
+                    'skipped': sent_skipped_count,
                 }
             self.progress_value_callback(len(qsos), len(qsos))
             

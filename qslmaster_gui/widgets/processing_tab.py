@@ -591,20 +591,29 @@ class ProcessingTab(QWidget):
             stats_text = "Processing completed successfully!\n\n"
             stats_text += f"Total QSOs to send: {result['stats'].get('total_to_send', 0)}\n"
 
+            callsign_filter_stats = result['stats'].get('callsign_filter')
             ignored_dxcc_stats = result['stats'].get('ignored_dxcc')
+            already_sent_stats = result['stats'].get('already_sent')
 
             for country, stats in result['stats'].items():
-                if country in {'total_to_send', 'ignored_dxcc'}:
+                if country in {'total_to_send', 'callsign_filter', 'ignored_dxcc', 'already_sent'}:
                     continue
                 if isinstance(stats, dict):
                     stats_text += f"{country}: {stats.get('to_send', 0)}/{stats.get('total', 0)}\n"
 
+            if isinstance(callsign_filter_stats, dict):
+                mode = str(callsign_filter_stats.get('mode', 'off') or 'off').strip().lower()
+                mode_label = 'Allow list' if mode == 'allow' else 'Block list'
+                skipped = int(callsign_filter_stats.get('skipped', 0) or 0)
+                stats_text += f"Callsign filter ({mode_label}): {skipped}\n"
+
             if isinstance(ignored_dxcc_stats, dict):
-                ignored_ids = ignored_dxcc_stats.get('ids', []) or []
-                ignored_ids_text = ', '.join(str(value) for value in ignored_ids)
                 skipped = int(ignored_dxcc_stats.get('skipped', 0) or 0)
-                stats_text += f"Ignored DXCC: {skipped}"
-                stats_text += "\n"
+                stats_text += f"Ignored DXCC: {skipped}\n"
+
+            if isinstance(already_sent_stats, dict):
+                skipped = int(already_sent_stats.get('skipped', 0) or 0)
+                stats_text += f"Already sent QSOs: {skipped}\n"
 
             stats_text += f"\nOutput files:\n"
             stats_text += f"  ADIF: {result['output_adif']}\n"
