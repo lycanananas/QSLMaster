@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
     QDialog, QDialogButtonBox, QRadioButton, QSpinBox
 )
-from PyQt6.QtCore import Qt, QDate, QThreadPool, pyqtSlot
+from PyQt6.QtCore import Qt, QDate, pyqtSlot
 from PyQt6.QtGui import QFont
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
 from qslmaster_cli.qslmaster_core import QSLProcessor
@@ -19,13 +19,13 @@ class ProcessingTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.processor_worker = None
-        self.thread_pool = QThreadPool()
         self.current_config = None
         self.stations_loaded = False
         self.qrz_error_count = 0
         self.pzk_error_count = 0
         self.qrz_disabled = False
         self.pzk_disabled = False
+        self.processing_active = False
         self.init_ui()
 
     @staticmethod
@@ -41,6 +41,15 @@ class ProcessingTab(QWidget):
     def _set_processing_buttons_enabled(self, enabled: bool):
         self.process_wavelog_button.setEnabled(enabled)
         self.process_adif_button.setEnabled(enabled)
+
+    def _set_processing_state(self, active: bool, aborting: bool = False):
+        self.processing_active = active
+        self.process_wavelog_button.setVisible(not active)
+        self.process_adif_button.setVisible(not active)
+        self.abort_processing_button.setVisible(active)
+        self.abort_processing_button.setEnabled(active and not aborting)
+        self.abort_processing_button.setText("Aborting..." if aborting else "Abort Processing")
+        self._set_processing_buttons_enabled(not active)
 
     def _select_adif_source_file(self, suggested_path: str = '') -> str:
         start_path = str(suggested_path or '').strip()
@@ -259,6 +268,12 @@ class ProcessingTab(QWidget):
         self.process_adif_button.setMinimumHeight(40)
         self.process_adif_button.clicked.connect(self.start_adif_processing)
         process_buttons_layout.addWidget(self.process_adif_button)
+        self.abort_processing_button = QPushButton("Abort Processing")
+        self.abort_processing_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.abort_processing_button.setMinimumHeight(40)
+        self.abort_processing_button.clicked.connect(self.abort_processing)
+        self.abort_processing_button.setVisible(False)
+        process_buttons_layout.addWidget(self.abort_processing_button)
         layout.addLayout(process_buttons_layout)
 
         self.progress_bar = QProgressBar()
@@ -466,6 +481,9 @@ class ProcessingTab(QWidget):
         self._start_processing('adif_file')
 
     def _start_processing(self, source: str):
+        if self.processing_active:
+            return
+
         if not self.current_config:
             QMessageBox.warning(self, "Error", "No configuration loaded")
             return
@@ -547,6 +565,7 @@ class ProcessingTab(QWidget):
         self.processor_worker.signals.log.connect(self.on_log)
         self.processor_worker.signals.finished.connect(self.on_finished)
         self.processor_worker.signals.error.connect(self.on_error)
+        self.processor_worker.signals.cancelled.connect(self.on_cancelled)
 
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
@@ -556,8 +575,15 @@ class ProcessingTab(QWidget):
         self.qrz_disabled = False
         self.pzk_disabled = False
 
-        self._set_processing_buttons_enabled(False)
-        self.thread_pool.start(self.processor_worker)
+        self._set_processing_state(True)
+        self.processor_worker.start()
+
+    def abort_processing(self):
+        if not self.processor_worker or not self.processing_active:
+            return
+        self.on_log('WARNING', 'Abort requested by user')
+        self._set_processing_state(True, aborting=True)
+        self.processor_worker.stop()
 
     @pyqtSlot(str)
     def on_progress(self, message: str):
@@ -585,7 +611,8 @@ class ProcessingTab(QWidget):
     @pyqtSlot(dict)
     def on_finished(self, result: dict):
         self.progress_bar.setVisible(True)
-        self._set_processing_buttons_enabled(True)
+        self._set_processing_state(False)
+        self.processor_worker = None
 
         if result['success']:
             stats_text = "Processing completed successfully!\n\n"
@@ -636,5 +663,13 @@ class ProcessingTab(QWidget):
     @pyqtSlot(str)
     def on_error(self, error_message: str):
         self.progress_bar.setVisible(False)
-        self._set_processing_buttons_enabled(True)
+        self._set_processing_state(False)
+        self.processor_worker = None
         QMessageBox.critical(self, "Processing Error", f"An error occurred: {error_message}")
+
+    @pyqtSlot(str)
+    def on_cancelled(self, message: str):
+        self.progress_bar.setVisible(False)
+        self._set_processing_state(False)
+        self.processor_worker = None
+        QMessageBox.information(self, "Processing Aborted", message)

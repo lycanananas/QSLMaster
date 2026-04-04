@@ -9,5 +9,6 @@ class ProcessorSignals(QObject):
     
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
+    cancelled = pyqtSignal(str)
     
     api_check_done = pyqtSignal(bool)
