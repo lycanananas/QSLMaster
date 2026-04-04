@@ -9,7 +9,7 @@ from .qrz import QRZAPI, QRZAPIError
 logger = logging.getLogger(__name__)
 
 
-def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None, log_callback: Optional[Callable[[str, str], None]] = None, progress_callback: Optional[Callable[[int, int], None]] = None) -> Tuple[List, int]:
+def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None, include_direct_when_no_bureau: bool = False, log_callback: Optional[Callable[[str, str], None]] = None, progress_callback: Optional[Callable[[int, int], None]] = None) -> Tuple[List, int]:
     def log(level: str, msg: str) -> None:
         if log_callback:
             log_callback(level, msg)
@@ -91,10 +91,21 @@ def process_qsos_other(qsos: List, qrz_api: Optional[QRZAPI] = None, log_callbac
                     processed_qsos += 1
                     progress(processed_qsos, len(qsos))
             else:
-                log('INFO', f"  QRZ result: {callsign} does not have QSL bureau - {len(call_qsos)} QSO(s)")
-                for _ in call_qsos:
-                    processed_qsos += 1
-                    progress(processed_qsos, len(qsos))
+                if include_direct_when_no_bureau:
+                    log('INFO', f"  QRZ result: {callsign} does not have QSL bureau, added as direct - {len(call_qsos)} QSO(s)")
+                    for qso in call_qsos:
+                        qso_copy = dict(qso)
+                        qso_copy['QSL_SENT'] = 'Y'
+                        qso_copy['QSL_SENT_VIA'] = 'D'
+                        qso_copy['QSL_VIA'] = ''
+                        verified_qsos.append(qso_copy)
+                        processed_qsos += 1
+                        progress(processed_qsos, len(qsos))
+                else:
+                    log('INFO', f"  QRZ result: {callsign} does not have QSL bureau - {len(call_qsos)} QSO(s)")
+                    for _ in call_qsos:
+                        processed_qsos += 1
+                        progress(processed_qsos, len(qsos))
         except QRZAPIError as e:
             qrz_error_count += 1
             log('WARNING', f"  QRZ result: {callsign} lookup error: {e}")

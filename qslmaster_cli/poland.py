@@ -64,7 +64,7 @@ def _fetch_pzk_member_info(homecall: str) -> Optional[Tuple[str, str]]:
     return result
 
 
-def process_qsos_poland(qsos: List, log_callback: Optional[Callable[[str, str], None]] = None, progress_callback: Optional[Callable[[int, int], None]] = None) -> Tuple[List, int]:
+def process_qsos_poland(qsos: List, include_direct_when_no_bureau: bool = False, log_callback: Optional[Callable[[str, str], None]] = None, progress_callback: Optional[Callable[[int, int], None]] = None) -> Tuple[List, int]:
     def log(level: str, msg: str) -> None:
         if log_callback:
             log_callback(level, msg)
@@ -123,7 +123,21 @@ def process_qsos_poland(qsos: List, log_callback: Optional[Callable[[str, str], 
                 info = pzk_cache[fullcall]
             
             if not info:
-                log('INFO', f"  PZK result: {fullcall} is not a member of PZK - {len(call_qsos)} QSO(s)")
+                if include_direct_when_no_bureau:
+                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK, added as direct - {len(call_qsos)} QSO(s)")
+                    for qso in call_qsos:
+                        qso_copy = dict(qso)
+                        qso_copy["QSL_SENT"] = "Y"
+                        qso_copy["QSL_SENT_VIA"] = "D"
+                        qso_copy["QSL_VIA"] = ""
+                        results.append(qso_copy)
+                        processed_qsos += 1
+                        progress(processed_qsos, len(qsos))
+                else:
+                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK - {len(call_qsos)} QSO(s)")
+                    for _ in call_qsos:
+                        processed_qsos += 1
+                        progress(processed_qsos, len(qsos))
                 continue
             
             status_text, ot_text = info
@@ -158,10 +172,21 @@ def process_qsos_poland(qsos: List, log_callback: Optional[Callable[[str, str], 
                         processed_qsos += 1
                         progress(processed_qsos, len(qsos))
             else:
-                log('INFO', f"  PZK result: {fullcall} is not a member of PZK - {len(call_qsos)} QSO(s)")
-                for _ in call_qsos:
-                    processed_qsos += 1
-                    progress(processed_qsos, len(qsos))
+                if include_direct_when_no_bureau:
+                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK, added as direct - {len(call_qsos)} QSO(s)")
+                    for qso in call_qsos:
+                        qso_copy = dict(qso)
+                        qso_copy["QSL_SENT"] = "Y"
+                        qso_copy["QSL_SENT_VIA"] = "D"
+                        qso_copy["QSL_VIA"] = ""
+                        results.append(qso_copy)
+                        processed_qsos += 1
+                        progress(processed_qsos, len(qsos))
+                else:
+                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK - {len(call_qsos)} QSO(s)")
+                    for _ in call_qsos:
+                        processed_qsos += 1
+                        progress(processed_qsos, len(qsos))
         except PZKAPIError as e:
             pzk_error_count += 1
             log('WARNING', f"  PZK result: {fullcall} lookup error: {e}")
