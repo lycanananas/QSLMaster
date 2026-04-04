@@ -24,14 +24,16 @@ wheels/
 *.egg
 
 # IDE
+.vscode/*
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
 *~
 
 # Configuration
-*.json
-!config.example.json
+/*.json
+!/config.example.json
 
 # Adif
 *.adi

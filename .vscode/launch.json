@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: QSLMaster CLI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "qslmaster_cli.main",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--config",
+        "${workspaceFolder}/config.json",
+        "--output-adif",
+        "${workspaceFolder}/output.adif"
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "Python: QSLMaster GUI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "qslmaster_gui.main",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Python: QSLMaster CLI selftest",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "qslmaster_cli.callsign_selftest",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    }
+  ]
+}
