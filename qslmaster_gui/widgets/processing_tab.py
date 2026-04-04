@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QDialog, QDialogButtonBox, QRadioButton, QSpinBox
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSlot
-from PyQt6.QtGui import QFont
 from qslmaster_gui.dialogs.pdf_options_dialog import PdfOptionsDialog
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
 from qslmaster_cli.qslmaster_core import QSLProcessor
@@ -92,10 +91,6 @@ class ProcessingTab(QWidget):
         spacer_item.setFlags(Qt.ItemFlag.NoItemFlags)
         self.station_list.addItem(spacer_item)
         info_item = QListWidgetItem("Available only for Wavelog")
-        info_font = QFont()
-        info_font.setPointSize(12)
-        info_font.setBold(True)
-        info_item.setFont(info_font)
         info_item.setFlags(Qt.ItemFlag.NoItemFlags)
         self.station_list.addItem(info_item)
         self.all_stations_check.setChecked(True)
@@ -285,17 +280,14 @@ class ProcessingTab(QWidget):
 
         process_buttons_layout = QHBoxLayout()
         self.process_wavelog_button = QPushButton("Process with Wavelog")
-        self.process_wavelog_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.process_wavelog_button.setMinimumHeight(40)
         self.process_wavelog_button.clicked.connect(self.start_wavelog_processing)
         process_buttons_layout.addWidget(self.process_wavelog_button)
         self.process_adif_button = QPushButton("Process with ADIF")
-        self.process_adif_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.process_adif_button.setMinimumHeight(40)
         self.process_adif_button.clicked.connect(self.start_adif_processing)
         process_buttons_layout.addWidget(self.process_adif_button)
         self.abort_processing_button = QPushButton("Abort Processing")
-        self.abort_processing_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.abort_processing_button.setMinimumHeight(40)
         self.abort_processing_button.clicked.connect(self.abort_processing)
         self.abort_processing_button.setVisible(False)
@@ -667,7 +659,7 @@ class ProcessingTab(QWidget):
             delivery_method_stats = result['stats'].get('delivery_methods')
 
             if isinstance(delivery_method_stats, dict):
-                stats_text += f"Delivery methods: bureau={int(delivery_method_stats.get('bureau', 0) or 0)}, direct={int(delivery_method_stats.get('direct', 0) or 0)}\n"
+                stats_text += f"Delivery methods: bureau: {int(delivery_method_stats.get('bureau', 0) or 0)}, direct: {int(delivery_method_stats.get('direct', 0) or 0)}\n"
 
             for country, stats in result['stats'].items():
                 if country in {'total_to_send', 'delivery_methods', 'callsign_filter', 'ignored_dxcc', 'already_sent'}:
