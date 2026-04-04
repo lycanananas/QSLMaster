@@ -2,7 +2,7 @@ import os
 from importlib import metadata
 
 APP_NAME = "QSLMaster"
-SOURCE_VERSION = "1.5.0"
+SOURCE_VERSION = "1.5.1"
 
 
 def get_version() -> str:
