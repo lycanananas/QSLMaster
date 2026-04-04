@@ -501,6 +501,12 @@ class QSLProcessor:
 
                 homecall = self.callinfo.get_homecall(fullcall)
                 adif_id = self.callinfo.get_adif_id(homecall)
+                
+                if qso.get('QSL_SENT', '').strip().upper() == 'Y':
+                    qso_date = datetime.strptime(qso.get('QSO_DATE', '19000101'), '%Y%m%d').strftime('%Y-%m-%d')
+                    qso_time = datetime.strptime(qso.get('TIME_ON', '000000'), '%H%M%S').strftime('%H:%M:%S')
+                    self._log('DEBUG', f"Skipping QSO with {fullcall} on {qso_date} at {qso_time} - already marked as sent")
+                    continue
 
                 if adif_id in buckets:
                     buckets[adif_id].append(qso)
