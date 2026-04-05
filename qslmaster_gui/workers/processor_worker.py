@@ -1,5 +1,6 @@
 import logging
 import multiprocessing as mp
+import sys
 from queue import Empty
 from typing import Optional
 
@@ -10,6 +11,14 @@ from .signals import ProcessorSignals
 
 
 logger = logging.getLogger(__name__)
+
+
+def _get_multiprocessing_context():
+    if sys.platform == 'win32':
+        return mp.get_context('spawn')
+    if sys.platform.startswith('linux'):
+        return mp.get_context('fork')
+    return mp.get_context()
 
 
 def _run_processor(
@@ -98,7 +107,7 @@ class ProcessorWorker(QObject):
         if self.process is not None:
             return
 
-        ctx = mp.get_context('spawn')
+        ctx = _get_multiprocessing_context()
         self.event_queue = ctx.Queue()
         self.abort_requested = False
         self._completion_emitted = False

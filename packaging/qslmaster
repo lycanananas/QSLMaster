@@ -1,3 +1,3 @@
 #!/bin/bash
 export PYTHONPATH="/usr/lib/qslmaster/vendor:/usr/lib/qslmaster${PYTHONPATH:+:$PYTHONPATH}"
-exec -a qslmaster python3 -c "from qslmaster_gui.main import main; main()" "$@"
+exec -a qslmaster python3 -m qslmaster_gui.main "$@"
