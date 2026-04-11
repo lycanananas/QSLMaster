@@ -10,7 +10,7 @@ Download QSO data from Wavelog or a local ADIF file and prepare ADIF output and 
 - ADIF loading/parsing from Wavelog API or local file
 - Date range filtering
 - Runtime source selection in GUI (`Process with Wavelog` or `Process with ADIF`)
-- Callsign allow/block filtering with wildcard support against full callsign
+- Callsign allow/block filtering against normalized homecall without wildcard support
 - Ignored DXCC filtering and already sent QSO filtering
 - QSL bureau verification via QRZ.com (optional)
 - Country specific processing for Poland (PZK lookup)
@@ -99,7 +99,7 @@ cp config.example.json config.json
   - `qrz_password` - Your QRZ.com password (optional)
   - `ignored_dxcc` - List of DXCC IDs to skip during QSL generation (optional)
   - `callsign_filter_mode` - Callsign filter mode: `off`, `allow` or `block` (optional)
-  - `callsign_filter_patterns` - Full callsign patterns with wildcard support, for example `SP3ABC`, `SP3ABC/M`, `SP3ABC/*` (optional)
+  - `callsign_filter_patterns` - Homecalls matched after callsign normalization, one exact value per entry, for example `SP3ABC`, `3Z3Z3Z` (optional)
 
 Example config.json:
 ```json
@@ -112,7 +112,7 @@ Example config.json:
   "qrz_password": "your_qrz_password",
   "ignored_dxcc": [15, 54],
   "callsign_filter_mode": "off",
-  "callsign_filter_patterns": ["SP3ABC", "SP3ABC/*"]
+  "callsign_filter_patterns": ["SP3ABC", "3Z3Z3Z"]
 }
 ```
 
@@ -187,10 +187,12 @@ python qslmaster_cli/main.py --config config.json -o output.adif --generate-pdf 
 
 The direct fallback is applied only when the lookup completes successfully but no bureau is found. Lookup errors and unavailable APIs are still treated separately and are not converted to direct automatically.
 
-Filter by full callsign with wildcard patterns:
+Filter by normalized homecall without wildcards:
 ```bash
-python qslmaster_cli/main.py --config config.json -o output.adif --callsign-list-mode allow --callsign-pattern SP3ABC --callsign-pattern SP3ABC/*
+python qslmaster_cli/main.py --config config.json -o output.adif --callsign-list-mode allow --callsign-pattern SP3ABC --callsign-pattern 3Z3Z3Z
 ```
+
+Callsign filtering compares the normalized homecall. For example, the pattern `3Z3Z3Z` matches `3Z3Z3Z`, `3Z3Z3Z/P`, `LZ/3Z3Z3Z` and `HB/3Z3Z3Z/P`. Wildcards are not supported.
 
 Generate PDF labels using partially used pages:
 ```bash

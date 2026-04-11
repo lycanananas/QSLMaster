@@ -3,7 +3,6 @@ import sys
 import json
 import plistlib
 import adif_io
-import fnmatch
 import requests
 import zipfile
 import io
@@ -16,6 +15,7 @@ from pyhamtools.lookuplib import LookupLib
 from .config import load_config, validate_config, ConfigError
 from .wavelog import WavelogAPI, WavelogAPIError
 from .qrz import QRZAPI, QRZAPIError
+from .callsign_utils import extract_homecall
 from .poland import process_qsos_poland
 from .other import process_qsos_other
 from .pdf_labels import generate_pdf_labels, preview_label_data, normalize_pdf_page_specs
@@ -559,6 +559,14 @@ class QSLProcessor:
             seen.add(pattern)
         return normalized
 
+    @staticmethod
+    def normalize_callsign_filter_target(value: str) -> str:
+        normalized_value = str(value or '').strip().upper()
+        if not normalized_value:
+            return ''
+
+        return extract_homecall(normalized_value)
+
     def filter_qsos_by_callsign_patterns(self, qsos: List) -> Tuple[List, int, Dict[str, int]]:
         mode = self.get_callsign_filter_mode()
         patterns = self.get_callsign_filter_patterns()
@@ -570,9 +578,10 @@ class QSLProcessor:
 
         for qso in qsos:
             fullcall = str(qso.get('CALL', '') or '').strip().upper()
+            normalized_call = self.normalize_callsign_filter_target(fullcall)
             matched_pattern = None
             for pattern in patterns:
-                if fnmatch.fnmatch(fullcall, pattern):
+                if normalized_call == pattern:
                     matched_pattern = pattern
                     break
 

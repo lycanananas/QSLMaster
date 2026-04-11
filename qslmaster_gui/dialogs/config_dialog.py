@@ -166,13 +166,13 @@ class ConfigDialog(QDialog):
         callsign_filter_layout.addWidget(self.callsign_filter_mode_combo)
 
         callsign_filter_note = QLabel(
-            "Matched against full callsign. Use one pattern per line. Wildcards supported, for example SP3ABC, SP3ABC/M, SP3ABC/*."
+            "Matched against normalized callsign. Use one exact callsign per line. Wildcards are not supported. For example: SP3ABC, 3Z3Z3Z."
         )
         callsign_filter_note.setWordWrap(True)
         callsign_filter_layout.addWidget(callsign_filter_note)
 
         self.callsign_filter_patterns_input = QTextEdit()
-        self.callsign_filter_patterns_input.setPlaceholderText("SP3ABC\nSP3ABC/M\nSP3ABC/*")
+        self.callsign_filter_patterns_input.setPlaceholderText("SP3ABC\n3Z3Z3Z")
         self.callsign_filter_patterns_input.setMinimumHeight(120)
         self.callsign_filter_patterns_input.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         callsign_filter_layout.addWidget(self.callsign_filter_patterns_input)
