@@ -440,6 +440,53 @@ class QSLProcessor:
         except Exception:
             return str(dxcc_id)
 
+    def get_qso_homecall(self, qso: Dict[str, Any]) -> str:
+        return extract_homecall(str(qso.get('CALL', '') or '').strip().upper())
+
+    def get_pdf_label_delivery_sort_rank(self, qso: Dict[str, Any]) -> int:
+        delivery_method = str(qso.get('QSL_SENT_VIA', '') or '').strip().upper()
+        return 1 if delivery_method == 'D' else 0
+
+    def get_pdf_label_poland_via_sort_key(self, qso: Dict[str, Any], country_name: str) -> Tuple[int, str]:
+        if country_name.casefold() != 'poland':
+            return (0, '')
+
+        qsl_via = str(qso.get('QSL_VIA', '') or '').strip().upper()
+        if qsl_via:
+            return (0, qsl_via.casefold())
+
+        return (1, '')
+
+    def get_pdf_label_sort_key(self, qso: Dict[str, Any]) -> Tuple[int, int, str, Tuple[int, str], int, str, str, str]:
+        homecall = self.get_qso_homecall(qso)
+        fullcall = str(qso.get('CALL', '') or '').strip().upper()
+        country_name = ''
+
+        if homecall and self.callinfo is not None:
+            try:
+                adif_id = self.callinfo.get_adif_id(homecall)
+                if adif_id:
+                    country_name = str(self.get_dxcc_name(adif_id) or '').strip()
+            except Exception:
+                country_name = ''
+
+        delivery_sort_rank = self.get_pdf_label_delivery_sort_rank(qso)
+        poland_via_sort_key = self.get_pdf_label_poland_via_sort_key(qso, country_name)
+
+        return (
+            delivery_sort_rank,
+            0 if country_name else 1,
+            country_name.casefold(),
+            poland_via_sort_key,
+            0 if homecall else 1,
+            homecall.casefold(),
+            fullcall.casefold(),
+            self.format_qso_datetime(qso),
+        )
+
+    def sort_qsos_for_pdf_labels(self, qsos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return sorted(qsos, key=self.get_pdf_label_sort_key)
+
     def format_qso_datetime(self, qso: Dict[str, Any]) -> str:
         qso_date_raw = str(qso.get('QSO_DATE', '') or '').strip()
         qso_time_raw = str(qso.get('TIME_ON', '') or '').strip()
@@ -512,7 +559,7 @@ class QSLProcessor:
                     filtered_qsos.append(qso)
                     continue
 
-                homecall = self.callinfo.get_homecall(fullcall)
+                homecall = self.get_qso_homecall(qso)
                 adif_id = self.callinfo.get_adif_id(homecall)
                 if adif_id in ignored_dxcc:
                     skipped_by_dxcc[adif_id] = skipped_by_dxcc.get(adif_id, 0) + 1
@@ -634,7 +681,7 @@ class QSLProcessor:
                 if not fullcall:
                     continue
 
-                homecall = self.callinfo.get_homecall(fullcall)
+                homecall = self.get_qso_homecall(qso)
                 adif_id = self.callinfo.get_adif_id(homecall)
 
                 if adif_id in buckets:
@@ -882,12 +929,13 @@ class QSLProcessor:
             if generate_pdf:
                 try:
                     normalized_pdf_page_specs = normalize_pdf_page_specs(pdf_page_specs)
+                    pdf_qsos = self.sort_qsos_for_pdf_labels(all_qsl_qsos)
                     if preview_pdf:
-                        preview_label_data(all_qsl_qsos, limit=3)
+                        preview_label_data(pdf_qsos, limit=3)
                     
                     self._progress(f"Generating PDF labels to {generate_pdf}...")
                     logo_path = self.config.get('logo_path', 'logo.png')
-                    generate_pdf_labels(all_qsl_qsos, generate_pdf, debug_labels, logo_path, normalized_pdf_page_specs)
+                    generate_pdf_labels(pdf_qsos, generate_pdf, debug_labels, logo_path, normalized_pdf_page_specs)
                     output_pdf_path = generate_pdf
                     self._progress(f"PDF labels generated: {generate_pdf}")
                     self._log('INFO', f"PDF labels generated: {generate_pdf}")
