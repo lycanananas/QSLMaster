@@ -98,7 +98,7 @@ def build_generated_callsigns() -> list[str]:
     return callsigns
 
 
-def build_qsos() -> list[dict[str, str]]:
+def build_qsos(processor: QSLProcessor) -> list[dict[str, str]]:
     callsigns = build_generated_callsigns()
     shuffled_callsigns = list(callsigns)
     random.Random(SHUFFLE_SEED).shuffle(shuffled_callsigns)
@@ -108,10 +108,22 @@ def build_qsos() -> list[dict[str, str]]:
         day = (index % 28) + 1
         hour = index % 24
         minute = (index * 7) % 60
+        is_poland = resolve_country(processor, callsign) == 'Poland'
+        qsl_sent_via = 'B'
+        qsl_via = ''
+
+        if is_poland:
+            ot_number = (index % 5) + 1
+            qsl_via = f'OT-{ot_number:02d}'
+        elif index % 7 == 0:
+            qsl_sent_via = 'D'
+
         qsos.append({
             'CALL': callsign,
             'QSO_DATE': f'202602{day:02d}',
             'TIME_ON': f'{hour:02d}{minute:02d}00',
+            'QSL_SENT_VIA': qsl_sent_via,
+            'QSL_VIA': qsl_via,
         })
     return qsos
 
@@ -120,7 +132,18 @@ def build_expected_order(processor: QSLProcessor, qsos: list[dict[str, str]]) ->
     expected_qsos = sorted(
         qsos,
         key=lambda qso: (
+            1 if str(qso.get('QSL_SENT_VIA', '')).strip().upper() == 'D' else 0,
             resolve_country(processor, str(qso.get('CALL', ''))).casefold(),
+            (
+                0,
+                str(qso.get('QSL_VIA', '')).strip().upper().casefold(),
+            ) if resolve_country(processor, str(qso.get('CALL', ''))) == 'Poland' and str(qso.get('QSL_VIA', '')).strip() else (
+                1,
+                '',
+            ) if resolve_country(processor, str(qso.get('CALL', ''))) == 'Poland' else (
+                0,
+                '',
+            ),
             extract_homecall(str(qso.get('CALL', '')).strip().upper()).casefold(),
             str(qso.get('CALL', '')).strip().upper().casefold(),
             processor.format_qso_datetime(qso),
@@ -135,7 +158,7 @@ def main() -> int:
 
     country_file = ensure_country_file()
     processor = build_processor(country_file)
-    qsos = build_qsos()
+    qsos = build_qsos(processor)
     unique_countries = sorted({resolve_country(processor, str(qso.get('CALL', ''))) for qso in qsos}, key=str.casefold)
 
     if len(qsos) == 255:
@@ -185,6 +208,26 @@ def main() -> int:
         print(f'✗ pdf_label_sort_country_then_homecall')
         print(f'  actual={sorted_calls}')
         print(f'  expected={expected_calls}')
+        fail += 1
+
+    direct_indices = [index for index, qso in enumerate(sorted_qsos) if str(qso.get('QSL_SENT_VIA', '')).strip().upper() == 'D']
+    if not direct_indices or min(direct_indices) >= len(sorted_qsos) - len(direct_indices):
+        print('✓ pdf_label_sort_direct_at_end')
+        ok += 1
+    else:
+        print(f'✗ pdf_label_sort_direct_at_end direct_indices={direct_indices}')
+        fail += 1
+
+    polish_bureau_via = [
+        str(qso.get('QSL_VIA', '')).strip().upper()
+        for qso in sorted_qsos
+        if resolve_country(processor, str(qso.get('CALL', ''))) == 'Poland' and str(qso.get('QSL_SENT_VIA', '')).strip().upper() != 'D'
+    ]
+    if polish_bureau_via == sorted(polish_bureau_via):
+        print('✓ pdf_label_sort_poland_by_via')
+        ok += 1
+    else:
+        print(f'✗ pdf_label_sort_poland_by_via actual={polish_bureau_via} expected={sorted(polish_bureau_via)}')
         fail += 1
 
     first_ten = [
