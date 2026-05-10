@@ -1,17 +1,21 @@
+import sys
 import time
+from pathlib import Path
 
-from .qslmaster_core import QSLProcessor
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from qslmaster_cli.qslmaster_core import QSLProcessor
 
 
 class FakeCallinfo:
     def __init__(self, mapping):
         self.mapping = mapping
 
-    def get_homecall(self, fullcall):
-        return str(fullcall or '').upper()
-
     def get_adif_id(self, homecall):
         return int(self.mapping.get(homecall, 0))
+
 
 def run_case(label, processor, qsos, expected_skipped_total, expected_breakdown, expected_remaining_calls):
     t0 = time.perf_counter()
@@ -24,27 +28,28 @@ def run_case(label, processor, qsos, expected_skipped_total, expected_breakdown,
     result_calls = [qso.get('CALL') if isinstance(qso, dict) else None for qso in filtered]
 
     if skipped_total == expected_skipped_total:
-        print(f"✓ {label} skipped_total={skipped_total} ({dt_ms:.2f}ms)")
+        print(f'✓ {label} skipped_total={skipped_total} ({dt_ms:.2f}ms)')
         ok += 1
     else:
-        print(f"✗ {label} skipped_total={skipped_total} expected={expected_skipped_total} ({dt_ms:.2f}ms)")
+        print(f'✗ {label} skipped_total={skipped_total} expected={expected_skipped_total} ({dt_ms:.2f}ms)')
         fail += 1
 
     if skipped_by_dxcc == expected_breakdown:
-        print(f"✓ {label} skipped_by_dxcc={skipped_by_dxcc}")
+        print(f'✓ {label} skipped_by_dxcc={skipped_by_dxcc}')
         ok += 1
     else:
-        print(f"✗ {label} skipped_by_dxcc={skipped_by_dxcc} expected={expected_breakdown}")
+        print(f'✗ {label} skipped_by_dxcc={skipped_by_dxcc} expected={expected_breakdown}')
         fail += 1
 
     if result_calls == expected_remaining_calls:
-        print(f"✓ {label} remaining_calls={result_calls}")
+        print(f'✓ {label} remaining_calls={result_calls}')
         ok += 1
     else:
-        print(f"✗ {label} remaining_calls={result_calls} expected={expected_remaining_calls}")
+        print(f'✗ {label} remaining_calls={result_calls} expected={expected_remaining_calls}')
         fail += 1
 
     return ok, fail
+
 
 def main() -> int:
     config = {
@@ -75,7 +80,7 @@ def main() -> int:
         'LU1ABC': 100,
         'YO2ZZ': 275,
         'YB1HR': 327,
-        '3D2AG/P': 176,
+        '3D2AG': 176,
         'FR8XYZ': 453,
     })
     processor.dxcc_name_map = {
@@ -129,7 +134,7 @@ def main() -> int:
     expected_calls_case_1 = [
         'SP5FOX', 'SQ9P', 'K1ABC', 'W6OP', 'DL1AAA', 'F4ABC', 'G3XYZ',
         'JA1NUT', 'VK2AAA', 'ZS6TEST', 'PY2ZZ', 'LU1ABC', 'YO2ZZ', 'YB1HR',
-        '3D2AG/P', 'FR8XYZ', 'UNKNOWN1', '', None
+        '3D2AG/P', 'FR8XYZ', 'UNKNOWN1', '', None,
     ]
     expected_breakdown_case_1 = {15: 2, 54: 2}
     case_ok, case_fail = run_case(
@@ -145,17 +150,17 @@ def main() -> int:
 
     normalized = processor.get_ignored_dxcc_set()
     if normalized == {15, 54}:
-        print(f"✓ normalized_ignored_dxcc={sorted(normalized)}")
+        print(f'✓ normalized_ignored_dxcc={sorted(normalized)}')
         ok += 1
     else:
-        print(f"✗ normalized_ignored_dxcc={sorted(normalized)} expected=[15, 54]")
+        print(f'✗ normalized_ignored_dxcc={sorted(normalized)} expected=[15, 54]')
         fail += 1
 
     processor.config['ignored_dxcc'] = []
     expected_calls_case_2 = [
         'UA1AAA', 'UA9BBB', 'R3ZZZ', 'R9WWW', 'SP5FOX', 'SQ9P', 'K1ABC', 'W6OP',
         'DL1AAA', 'F4ABC', 'G3XYZ', 'JA1NUT', 'VK2AAA', 'ZS6TEST', 'PY2ZZ',
-        'LU1ABC', 'YO2ZZ', 'YB1HR', '3D2AG/P', 'FR8XYZ', 'UNKNOWN1', '', None
+        'LU1ABC', 'YO2ZZ', 'YB1HR', '3D2AG/P', 'FR8XYZ', 'UNKNOWN1', '', None,
     ]
     case_ok, case_fail = run_case(
         label='case_no_ignored_dxcc',
@@ -168,7 +173,7 @@ def main() -> int:
     ok += case_ok
     fail += case_fail
 
-    print(f"\nSummary: ok={ok} fail={fail}")
+    print(f'\nSummary: ok={ok} fail={fail}')
     return 0 if fail == 0 else 1
 
 

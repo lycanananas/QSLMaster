@@ -240,30 +240,42 @@ python qslmaster_cli/validate_adif.py qsl.adi
 
 ## Testing
 
-Unit tests for callsign extraction:
+Self-tests are stored in the `tests/` directory and are not part of the distributed application package. Tests that need temporary external data keep it in `tests/.data/`.
+
+Callsign extraction self-test:
 ```bash
-python -m qslmaster_cli.callsign_selftest
+python tests/callsign_selftest.py
 ```
 
-QRZ bureau verification self-test (requires `qrz_username`/`qrz_password` in `config.json` and QRZ XML API premium access):
+Callsign filter self-test:
 ```bash
-python -m qslmaster_cli.qrz_selftest --config config.json
-```
-
-QRZ bureau verification with additional random callsigns (default 10 when `--random` has no value):
-```bash
-python -m qslmaster_cli.qrz_selftest --config config.json --random
-python -m qslmaster_cli.qrz_selftest --config config.json --random 35
-```
-
-PZK bureau lookup self-test:
-```bash
-python -m qslmaster_cli.pzk_selftest
+python tests/callsign_filter_selftest.py
 ```
 
 Ignored DXCC filter self-test:
 ```bash
-python -m qslmaster_cli.ignored_dxcc_selftest
+python tests/ignored_dxcc_selftest.py
+```
+
+PDF label sorting self-test. On first run it downloads the country file cache to `tests/.data/cty.plist` and verifies sorting on about 250 callsigns from many DXCC entities:
+```bash
+python tests/pdf_label_sort_selftest.py
+```
+
+QRZ bureau verification self-test (requires `qrz_username`/`qrz_password` in `config.json` and QRZ XML API premium access):
+```bash
+python tests/qrz_selftest.py --config config.json
+```
+
+QRZ bureau verification with additional random callsigns (default 10 when `--random` has no value):
+```bash
+python tests/qrz_selftest.py --config config.json --random
+python tests/qrz_selftest.py --config config.json --random 35
+```
+
+PZK bureau lookup self-test:
+```bash
+python tests/pzk_selftest.py
 ```
 
 This runs basic tests for the `extract_homecall()` function which handles various callsign formats including slashed callsigns (e.g., `DL/SQ5FOX/M/DL` → `SQ5FOX`).

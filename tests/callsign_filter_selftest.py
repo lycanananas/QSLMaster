@@ -1,6 +1,12 @@
+import sys
 import time
+from pathlib import Path
 
-from .qslmaster_core import QSLProcessor
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from qslmaster_cli.qslmaster_core import QSLProcessor
 
 
 def run_case(label, processor, qsos, expected_skipped_total, expected_breakdown, expected_remaining_calls):
@@ -14,24 +20,24 @@ def run_case(label, processor, qsos, expected_skipped_total, expected_breakdown,
     result_calls = [qso.get('CALL') if isinstance(qso, dict) else None for qso in filtered]
 
     if skipped_total == expected_skipped_total:
-        print(f"OK {label} skipped_total={skipped_total} ({dt_ms:.2f}ms)")
+        print(f'OK {label} skipped_total={skipped_total} ({dt_ms:.2f}ms)')
         ok += 1
     else:
-        print(f"FAIL {label} skipped_total={skipped_total} expected={expected_skipped_total} ({dt_ms:.2f}ms)")
+        print(f'FAIL {label} skipped_total={skipped_total} expected={expected_skipped_total} ({dt_ms:.2f}ms)')
         fail += 1
 
     if skipped_by_pattern == expected_breakdown:
-        print(f"OK {label} skipped_by_pattern={skipped_by_pattern}")
+        print(f'OK {label} skipped_by_pattern={skipped_by_pattern}')
         ok += 1
     else:
-        print(f"FAIL {label} skipped_by_pattern={skipped_by_pattern} expected={expected_breakdown}")
+        print(f'FAIL {label} skipped_by_pattern={skipped_by_pattern} expected={expected_breakdown}')
         fail += 1
 
     if result_calls == expected_remaining_calls:
-        print(f"OK {label} remaining_calls={result_calls}")
+        print(f'OK {label} remaining_calls={result_calls}')
         ok += 1
     else:
-        print(f"FAIL {label} remaining_calls={result_calls} expected={expected_remaining_calls}")
+        print(f'FAIL {label} remaining_calls={result_calls} expected={expected_remaining_calls}')
         fail += 1
 
     return ok, fail
@@ -89,13 +95,13 @@ def main() -> int:
 
     normalized_call = allow_processor.normalize_callsign_filter_target('HB/SQ5AM/P')
     if normalized_call == 'SQ5AM':
-        print(f"OK normalized_call={normalized_call}")
+        print(f'OK normalized_call={normalized_call}')
         ok += 1
     else:
-        print(f"FAIL normalized_call={normalized_call} expected=SQ5AM")
+        print(f'FAIL normalized_call={normalized_call} expected=SQ5AM')
         fail += 1
 
-    print(f"\nSummary: ok={ok} fail={fail}")
+    print(f'\nSummary: ok={ok} fail={fail}')
     return 0 if fail == 0 else 1
 
 
