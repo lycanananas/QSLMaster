@@ -4,10 +4,10 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QComboBox, QApplication, QMessageBox, QDialog
+    QPushButton, QComboBox, QApplication, QDialog
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QPixmap
 
 from qslmaster_gui.dialogs import ConfigDialog
 from qslmaster_gui.widgets import ProcessingTab
@@ -258,11 +258,7 @@ class QSLMasterMainWindow(QMainWindow):
                 self.processing_tab.set_config(selected_config)
 
     def closeEvent(self, event):
-        if (
-            self.processing_tab.processor_worker and
-            self.processing_tab.thread_pool.activeThreadCount() > 0
-        ):
-            self.processing_tab.thread_pool.waitForDone(5000)
+        self.processing_tab.shutdown()
         event.accept()
 
     def resizeEvent(self, event):

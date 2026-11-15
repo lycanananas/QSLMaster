@@ -3,10 +3,9 @@ from typing import List, Dict, Tuple
 from datetime import datetime
 from pathlib import Path
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm, inch
+from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
-from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -193,11 +192,11 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     logo_x = x + width - LABEL_PADDING - LOGO_WIDTH - LOGO_RIGHT_MARGIN
     logo_y = y - LABEL_PADDING - 1 * mm - LOGO_HEIGHT
     
-    resolved_logo_path = Path(logo_path)
+    resolved_logo_path = Path(logo_path or LOGO_IMAGE_PATH)
     if not resolved_logo_path.is_absolute():
-        resolved_logo_path = Path(__file__).parent / logo_path
+        resolved_logo_path = Path(__file__).parent / resolved_logo_path
     
-    if resolved_logo_path.exists():
+    if resolved_logo_path.is_file():
         try:
             img = ImageReader(str(resolved_logo_path))
             c.drawImage(img, logo_x, logo_y, width=LOGO_WIDTH, height=LOGO_HEIGHT, mask='auto')

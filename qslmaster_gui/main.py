@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 import logging
 import signal
 from pathlib import Path
@@ -9,6 +9,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
 
 from .ui.main_window import QSLMasterMainWindow
+from .workers.task_worker import TaskWorker
 from qslmaster_version import get_version
 
 
@@ -59,12 +60,7 @@ def main():
     window.show()
     
     def signal_handler(signum, frame):
-        if (window.processing_tab.processor_worker and 
-            window.processing_tab.thread_pool.activeThreadCount() > 0):
-            window.processing_tab.processor_worker.stop()
-            if not window.processing_tab.thread_pool.waitForDone(100):
-                os._exit(1)
-        sys.exit(0)
+        app.quit()
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -73,7 +69,11 @@ def main():
     timer.timeout.connect(lambda: None)
     timer.start(500)
     
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    window.processing_tab.shutdown(timeout_ms=1000)
+    if TaskWorker.any_running():
+        os._exit(exit_code)
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':

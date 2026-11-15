@@ -1,4 +1,5 @@
 import logging
+from html import escape
 from typing import Callable, Optional
 from pathlib import Path
 
@@ -14,9 +15,61 @@ from qslmaster_gui.utils.config_manager import (
     list_all_configs, get_config, create_config, update_config, delete_config,
     get_current_config_id, set_current_config_id, _save_logo_file, _delete_logo_file
 )
-from qslmaster_cli.qslmaster_core import QSLProcessor
+from qslmaster_cli.country_file import list_all_dxcc_entities
+from qslmaster_cli.wavelog import is_wavelog_api_v2_key, create_wavelog_api, WavelogAuthError, WAVELOG_API_V2_REQUIRED_SCOPES, WAVELOG_API_V2_MARK_AS_SENT_SCOPE
+from qslmaster_gui.workers.task_worker import TaskWorker
 
 logger = logging.getLogger(__name__)
+
+
+AVAILABLE_COLOR = "#2ea043"
+NOT_AVAILABLE_COLOR = "#d97706"
+
+
+def _summary_row(label: str, value: str) -> str:
+    return f"<tr><td style='padding-right:14px; white-space:nowrap;'>{escape(label)}</td><td style='white-space:nowrap;'>{value}</td></tr>"
+
+
+def _availability(available: bool, reason: str = '') -> str:
+    if available:
+        return f"<span style='color:{AVAILABLE_COLOR}; font-weight:bold;'>available</span>"
+    reason_text = f" <span style='color:gray;'>({escape(reason)})</span>" if reason else ""
+    return f"<span style='color:{NOT_AVAILABLE_COLOR}; font-weight:bold;'>not available</span>{reason_text}"
+
+
+def build_api_key_test_summary(result: dict) -> str:
+    is_v2 = result.get('api') == 'v2'
+    connection_rows = [_summary_row("API", "<b>v2</b>" if is_v2 else "<b>v1</b> (legacy)")]
+    if not is_v2:
+        connection_rows.append(_summary_row("Wavelog version", escape(str(result.get('version', 'N/A')))))
+    if result.get('owner'):
+        connection_rows.append(_summary_row("Token owner", f"<b>{escape(str(result.get('owner')))}</b>"))
+        connection_rows.append(_summary_row("Scopes", ', '.join(f"<code>{escape(str(scope))}</code>" for scope in result.get('scopes', []))))
+        connection_rows.append(_summary_row("Expires", escape(str(result.get('expires_at') or 'never'))))
+    connection_rows.append(_summary_row("Stations", f"<b>{int(result.get('stations', 0) or 0)}</b>"))
+
+    v2_reason = "requires an API v2 token"
+    if result.get('can_mark_as_sent'):
+        mark_as_sent = _availability(True)
+    elif is_v2:
+        mark_as_sent = _availability(False, f"add the {WAVELOG_API_V2_MARK_AS_SENT_SCOPE} scope")
+    else:
+        mark_as_sent = _availability(False, v2_reason)
+
+    feature_rows = [
+        _summary_row("Download QSOs", _availability(True)),
+        _summary_row("Station list", _availability(True)),
+        _summary_row("Server-side date filter", _availability(is_v2, '' if is_v2 else v2_reason)),
+        _summary_row("Mark as Sent in Wavelog", mark_as_sent),
+    ]
+
+    return (
+        f"<p style='color:{AVAILABLE_COLOR}; font-weight:bold; font-size:large;'>API key works</p>"
+        "<p><b>Connection</b></p>"
+        f"<table>{''.join(connection_rows)}</table>"
+        "<p><b>Features</b></p>"
+        f"<table>{''.join(feature_rows)}</table>"
+    )
 
 
 class ConfigDialog(QDialog):
@@ -62,9 +115,23 @@ class ConfigDialog(QDialog):
         wavelog_layout.addWidget(QLabel("API Key:"))
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_input.setPlaceholderText("Your Wavelog API key")
+        self.api_key_input.setPlaceholderText("Your Wavelog API key (v1 or v2 wl2_ token)")
+        self.api_key_input.textChanged.connect(self.update_api_key_type_label)
         wavelog_layout.addWidget(self.api_key_input)
-        
+
+        api_key_info_layout = QHBoxLayout()
+        self.api_key_type_label = QLabel()
+        self.api_key_type_label.setWordWrap(True)
+        api_key_info_layout.addWidget(self.api_key_type_label, 1)
+        self.api_key_test_btn = QPushButton("Test Key")
+        self.api_key_test_btn.clicked.connect(self.test_api_key)
+        api_key_info_layout.addWidget(self.api_key_test_btn)
+        api_key_help_btn = QPushButton("API Key Help")
+        api_key_help_btn.clicked.connect(self.show_api_key_help)
+        api_key_info_layout.addWidget(api_key_help_btn)
+        wavelog_layout.addLayout(api_key_info_layout)
+        self.update_api_key_type_label()
+
         wavelog_note = QLabel("Required only when processing from Wavelog.")
         wavelog_note.setWordWrap(True)
         wavelog_layout.addWidget(wavelog_note)
@@ -221,6 +288,81 @@ class ConfigDialog(QDialog):
         self.load_dxcc_options()
         self.on_callsign_filter_mode_changed()
 
+    def update_api_key_type_label(self):
+        api_key = self.api_key_input.text().strip()
+        if not api_key:
+            self.api_key_type_label.setText("Detected: no API key")
+        elif is_wavelog_api_v2_key(api_key):
+            self.api_key_type_label.setText("Detected: API v2 token (Wavelog 3.1.0 or later)")
+        else:
+            self.api_key_type_label.setText("Detected: API v1 key (legacy)")
+
+    def test_api_key(self):
+        wavelog_url = self.wavelog_url_input.text().strip()
+        api_key = self.api_key_input.text().strip()
+        if not wavelog_url or not api_key:
+            QMessageBox.warning(self, "Wavelog API Key Test", "Enter Wavelog URL and API key first.")
+            return
+
+        self.api_key_test_btn.setEnabled(False)
+        self.api_key_test_btn.setText("Testing")
+        self.api_key_test_worker = TaskWorker(lambda worker: create_wavelog_api(wavelog_url, api_key).test_access())
+        self.api_key_test_worker.succeeded.connect(self.on_api_key_test_succeeded)
+        self.api_key_test_worker.failed.connect(self.on_api_key_test_failed)
+        self.api_key_test_worker.finished.connect(self.on_api_key_test_finished)
+        self.api_key_test_worker.start()
+
+    def on_api_key_test_finished(self):
+        self.api_key_test_btn.setEnabled(True)
+        self.api_key_test_btn.setText("Test Key")
+        self.api_key_test_worker = None
+
+    def on_api_key_test_failed(self, error):
+        if not self.isVisible():
+            return
+        if isinstance(error, WavelogAuthError):
+            QMessageBox.warning(
+                self,
+                "Wavelog API Key Test",
+                f"Permission error:\n{error}\n\nUse API Key Help to check the required permissions."
+            )
+        else:
+            QMessageBox.warning(self, "Wavelog API Key Test", f"Connection failed:\n{error}")
+
+    def on_api_key_test_succeeded(self, result):
+        if not self.isVisible():
+            return
+        message_box = QMessageBox(QMessageBox.Icon.Information, "Wavelog API Key Test", build_api_key_test_summary(result), QMessageBox.StandardButton.Ok, self)
+        message_box.setTextFormat(Qt.TextFormat.RichText)
+        message_box.exec()
+
+    def show_api_key_help(self):
+        scopes = ", ".join(f"<code>{scope}</code>" for scope in WAVELOG_API_V2_REQUIRED_SCOPES)
+        QMessageBox.information(
+            self,
+            "Wavelog API Key Help",
+            "<p>QSLMaster supports both Wavelog API versions. The version is detected "
+            "automatically from the key format.</p>"
+            "<p><b>API v2 (recommended, Wavelog 3.1.0 or later)</b></p>"
+            "<ol>"
+            "<li>Log in to Wavelog and open the API section from the user menu.</li>"
+            "<li>Create a new API v2 token.</li>"
+            f"<li>Select the scopes: {scopes}. Add <code>{WAVELOG_API_V2_MARK_AS_SENT_SCOPE}</code> only if you want to use Mark as Sent in Wavelog.</li>"
+            "<li>Choose an expiry (30, 90, 365 days or never).</li>"
+            "<li>Copy the token right away. It starts with <code>wl2_</code> and is shown only once.</li>"
+            "</ol>"
+            "<p><b>API v1 (legacy)</b></p>"
+            "<p>Create a key with read-only (<code>r</code>) permission in the same API section. "
+            "Wavelog 2.0.0 or later is required.</p>"
+            "<p><b>Wavelog URL</b></p>"
+            "<p>Use the base address of your instance, for example "
+            "<code>https://log.example.com</code>. If your server does not rewrite URLs, "
+            "add <code>/index.php</code>, for example <code>https://log.example.com/index.php</code>.</p>"
+            "<p>QSLMaster only reads stations and QSOs. Your Wavelog log is changed only when you "
+            "explicitly use Mark as Sent in Wavelog, which requires an API v2 token with the "
+            f"<code>{WAVELOG_API_V2_MARK_AS_SENT_SCOPE}</code> scope.</p>",
+        )
+
     def get_callsign_filter_mode(self) -> str:
         return str(self.callsign_filter_mode_combo.currentData() or 'off')
 
@@ -250,7 +392,7 @@ class ConfigDialog(QDialog):
 
         try:
             if force_reload or ConfigDialog._dxcc_entities_cache is None:
-                ConfigDialog._dxcc_entities_cache = QSLProcessor.list_all_dxcc_entities()
+                ConfigDialog._dxcc_entities_cache = list_all_dxcc_entities()
             entities = ConfigDialog._dxcc_entities_cache
         except Exception as e:
             logger.error(f"Failed to load DXCC list: {e}")

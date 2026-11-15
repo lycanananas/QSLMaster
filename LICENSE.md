@@ -32,7 +32,6 @@ This project uses open-source libraries which may have their own licenses:
 
 - **requests**: Apache License 2.0
 - **adif-io**: MIT License
-- **pyhamtools**: GNU General Public License v2.0
 - **reportlab**: LGPL/BSD License
 
 See `requirements.txt` for complete dependency list.

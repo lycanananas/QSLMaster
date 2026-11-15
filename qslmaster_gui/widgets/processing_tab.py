@@ -9,9 +9,11 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSlot
 from qslmaster_gui.dialogs.pdf_options_dialog import PdfOptionsDialog
+from qslmaster_gui.dialogs.mark_sent_dialog import MarkSentDialog
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
+from qslmaster_gui.workers.task_worker import TaskWorker
 from qslmaster_cli.qslmaster_core import QSLProcessor
-from qslmaster_cli.wavelog import WavelogAPI
+from qslmaster_cli.wavelog import create_wavelog_api, WavelogAuthError
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +31,28 @@ class ProcessingTab(QWidget):
         self.pdf_draw_borders = False
         self.pdf_page_options_text = ''
         self.pdf_page_specs = []
+        self.station_request_id = 0
+        self.mark_sent_active = False
+        self.mark_sent_worker = None
         self.init_ui()
+
+    def start_background_task(self, task, on_success, on_failure, on_progress=None, on_progress_value=None, on_log=None) -> TaskWorker:
+        worker = TaskWorker(task)
+        worker.succeeded.connect(on_success)
+        worker.failed.connect(on_failure)
+        if on_progress:
+            worker.progress.connect(on_progress)
+        if on_progress_value:
+            worker.progress_value.connect(on_progress_value)
+        if on_log:
+            worker.log.connect(on_log)
+        worker.start()
+        return worker
+
+    def shutdown(self, timeout_ms: int = 3000):
+        if self.processor_worker:
+            self.processor_worker.stop()
+        TaskWorker.stop_all(timeout_ms)
 
     @staticmethod
     def _normalize_source(source: str) -> str:
@@ -44,6 +67,7 @@ class ProcessingTab(QWidget):
     def _set_processing_buttons_enabled(self, enabled: bool):
         self.process_wavelog_button.setEnabled(enabled)
         self.process_adif_button.setEnabled(enabled)
+        self.mark_sent_button.setEnabled(enabled and self._has_wavelog_config(self.current_config))
 
     def _get_pdf_options_summary(self) -> str:
         if not self.generate_pdf.isChecked():
@@ -85,14 +109,16 @@ class ProcessingTab(QWidget):
         )
         return str(file_path or '').strip()
 
-    def _set_station_controls_for_adif(self):
+    def _show_station_list_message(self, *lines: str):
         self.station_list.clear()
-        spacer_item = QListWidgetItem(" ")
-        spacer_item.setFlags(Qt.ItemFlag.NoItemFlags)
-        self.station_list.addItem(spacer_item)
-        info_item = QListWidgetItem("Available only for Wavelog")
-        info_item.setFlags(Qt.ItemFlag.NoItemFlags)
-        self.station_list.addItem(info_item)
+        self.station_list.setWordWrap(True)
+        for line in (" ",) + lines:
+            info_item = QListWidgetItem(line)
+            info_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.station_list.addItem(info_item)
+
+    def _set_station_controls_for_adif(self):
+        self._show_station_list_message("Available only for Wavelog")
         self.all_stations_check.setChecked(True)
         self.all_stations_check.setEnabled(False)
         self.station_list.setEnabled(False)
@@ -105,6 +131,7 @@ class ProcessingTab(QWidget):
         self.current_config = config
         has_wavelog_config = self._has_wavelog_config(config)
         self.refresh_station_btn.setEnabled(has_wavelog_config)
+        self._set_processing_buttons_enabled(not self.processing_active and not self.mark_sent_active)
 
         if not has_wavelog_config:
             self._set_station_controls_for_adif()
@@ -119,29 +146,70 @@ class ProcessingTab(QWidget):
             return
         self._set_station_controls_for_wavelog()
         logger.info("Loading station list from Wavelog...")
+        self.stations_loaded = False
+        self.all_stations_check.setChecked(True)
+        self.station_list.setEnabled(False)
+        self.refresh_station_btn.setEnabled(False)
+        self._show_station_list_message("Loading stations from Wavelog")
+
+        self.station_request_id += 1
+        request_id = self.station_request_id
+        wavelog_url = config['wavelog_url']
+        api_key = config['api_key']
+
+        def task(worker):
+            processor = QSLProcessor({})
+            processor.api_client = create_wavelog_api(wavelog_url, api_key)
+            return processor.list_stations()
+
+        self.start_background_task(
+            task,
+            lambda stations: self._on_stations_loaded(request_id, stations),
+            lambda error: self._on_stations_failed(request_id, error),
+        )
+
+    def _on_stations_loaded(self, request_id: int, stations):
+        if request_id != self.station_request_id:
+            return
+        self.refresh_station_btn.setEnabled(True)
         self.station_list.clear()
-        try:
-            processor = QSLProcessor(config)
-            processor.api_client = WavelogAPI(config['wavelog_url'], config['api_key'])
-            stations = processor.list_stations()
-            logger.info(f"Retrieved {len(stations)} stations from Wavelog")
-            for s in stations:
-                label = f"[{s['station_callsign']}] - {s['station_profile_name']}"
-                logger.info(f"Added station: {label}")
-                item = QListWidgetItem(label)
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(Qt.CheckState.Unchecked)
-                item.setData(Qt.ItemDataRole.UserRole, s['station_id'])
-                self.station_list.addItem(item)
-            self.all_stations_check.setChecked(True)
-            self.station_list.setEnabled(False)
-            logger.info("Station list loaded successfully")
-            self.stations_loaded = True
-        except Exception as e:
-            logger.error(f"Failed to load station list: {e}")
-            self.all_stations_check.setChecked(True)
-            self.station_list.setEnabled(False)
-            self.stations_loaded = False
+        logger.info(f"Retrieved {len(stations)} stations from Wavelog")
+        for s in stations:
+            label = f"[{s['station_callsign']}] - {s['station_profile_name']}"
+            logger.info(f"Added station: {label}")
+            item = QListWidgetItem(label)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, s['station_id'])
+            self.station_list.addItem(item)
+        self.station_list.setEnabled(not self.all_stations_check.isChecked())
+        logger.info("Station list loaded successfully")
+        self.stations_loaded = True
+
+    def _on_stations_failed(self, request_id: int, error):
+        if request_id != self.station_request_id:
+            return
+        logger.error(f"Failed to load station list: {error}")
+        self.refresh_station_btn.setEnabled(True)
+        self.all_stations_check.setChecked(True)
+        self.station_list.setEnabled(False)
+        self.stations_loaded = False
+        if isinstance(error, WavelogAuthError):
+            self._show_station_list_message(
+                "Missing Wavelog permissions",
+                str(error),
+                "Check the key with Test Key in Edit Settings",
+            )
+        else:
+            self._show_station_list_message("Cannot load stations from Wavelog", str(error))
+
+    def show_wavelog_permission_error(self, context: str, error_message: str):
+        QMessageBox.warning(
+            self,
+            "Wavelog Permission Error",
+            f"{context}\n\n{error_message}\n\n"
+            "Open Edit Settings and use API Key Help or Test Key to check the required permissions."
+        )
     def on_refresh_station_list(self):
         if self._has_wavelog_config(self.current_config):
             self.load_station_list(self.current_config)
@@ -292,6 +360,11 @@ class ProcessingTab(QWidget):
         self.abort_processing_button.clicked.connect(self.abort_processing)
         self.abort_processing_button.setVisible(False)
         process_buttons_layout.addWidget(self.abort_processing_button)
+        self.mark_sent_button = QPushButton("Mark as Sent in Wavelog")
+        self.mark_sent_button.setMinimumHeight(40)
+        self.mark_sent_button.clicked.connect(self.start_mark_as_sent)
+        self.mark_sent_button.setEnabled(False)
+        process_buttons_layout.addWidget(self.mark_sent_button)
         layout.addLayout(process_buttons_layout)
 
         self.progress_bar = QProgressBar()
@@ -513,6 +586,125 @@ class ProcessingTab(QWidget):
     def start_adif_processing(self):
         self._start_processing('adif_file')
 
+    def _set_mark_sent_state(self, active: bool, text: str = "Mark as Sent in Wavelog", cancellable: bool = False):
+        self.mark_sent_active = active
+        self.mark_sent_button.setText(text)
+        self._set_processing_buttons_enabled(not active)
+        self.mark_sent_button.setEnabled(not active or cancellable)
+        if not active:
+            self.mark_sent_worker = None
+
+    def _select_mark_sent_file(self) -> str:
+        suggested_path = Path(self.output_adif_input.text().strip() or str(Path.home()))
+        start_path = str(suggested_path) if suggested_path.is_file() else str(suggested_path.parent if suggested_path.parent.exists() else Path.home())
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select QSLMaster Output ADIF File",
+            start_path,
+            "ADIF Files (*.adi *.adif);;All Files (*)"
+        )
+        return str(file_path or '').strip()
+
+    def start_mark_as_sent(self):
+        if self.mark_sent_active and self.mark_sent_worker is not None:
+            self.mark_sent_worker.request_stop()
+            self.mark_sent_button.setEnabled(False)
+            self.mark_sent_button.setText("Cancelling")
+            self.on_log('WARNING', "Mark as sent cancel requested by user")
+            return
+        if self.processing_active or self.mark_sent_active:
+            return
+        if not self._has_wavelog_config(self.current_config):
+            QMessageBox.warning(self, "Mark as Sent", "Wavelog URL and API key are required. Configure them in Edit Settings.")
+            return
+
+        adif_path = self._select_mark_sent_file()
+        if not adif_path:
+            return
+
+        config_to_use = dict(self.current_config)
+        config_to_use['source'] = 'wavelog'
+        self.log_output.clear()
+        self.progress_bar.setValue(0)
+        self._set_mark_sent_state(True, "Matching QSOs")
+
+        def task(worker):
+            processor = QSLProcessor(
+                config_to_use,
+                progress_callback=worker.progress.emit,
+                log_callback=worker.log.emit,
+                progress_value_callback=worker.progress_value.emit,
+            )
+            return processor, processor.plan_mark_as_sent_from_adif(adif_path)
+
+        self.start_background_task(
+            task,
+            lambda result: self._on_mark_sent_planned(result, adif_path),
+            self._on_mark_sent_failed,
+            on_progress=self.on_progress,
+            on_progress_value=self.on_progress_value,
+            on_log=self.on_log,
+        )
+
+    def _on_mark_sent_planned(self, result, adif_path: str):
+        processor, plan = result
+        if not plan.matched:
+            self._set_mark_sent_state(False)
+            QMessageBox.information(
+                self,
+                "Mark as Sent",
+                f"No QSOs from the ADIF file were matched in Wavelog.\n\n"
+                f"Not found: {len(plan.not_found)}\nAmbiguous: {len(plan.ambiguous)}\n\n"
+                "Details are in the processing log."
+            )
+            return
+
+        dialog = MarkSentDialog(plan, adif_path, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._set_mark_sent_state(False)
+            self.on_log('INFO', "Mark as sent cancelled by user")
+            return
+
+        sent_date = dialog.get_sent_date().isoformat()
+        for match in plan.matched:
+            match.fields['qslsdate'] = sent_date
+
+        self._set_mark_sent_state(True, "Cancel Marking", cancellable=True)
+
+        def task(worker):
+            processor.progress_callback = worker.progress.emit
+            processor.log_callback = worker.log.emit
+            processor.progress_value_callback = worker.progress_value.emit
+            return processor.apply_mark_as_sent(plan, should_stop=worker.should_stop)
+
+        self.mark_sent_worker = self.start_background_task(
+            task,
+            lambda mark_result: self._on_mark_sent_done(mark_result, len(plan.matched)),
+            self._on_mark_sent_failed,
+            on_progress=self.on_progress,
+            on_progress_value=self.on_progress_value,
+            on_log=self.on_log,
+        )
+
+    def _on_mark_sent_done(self, result, total: int):
+        self._set_mark_sent_state(False)
+        message = f"Marked {result.updated} of {total} QSO(s) as sent in Wavelog."
+        if result.updated + len(result.failed) < total:
+            message += "\n\nCancelled before all QSOs were marked. Running Mark as Sent again with the same file is safe."
+        if result.failed:
+            message += f"\n\nFailed: {len(result.failed)}. Details are in the processing log."
+            QMessageBox.warning(self, "Mark as Sent", message)
+        else:
+            QMessageBox.information(self, "Mark as Sent", message)
+
+    def _on_mark_sent_failed(self, error):
+        self._set_mark_sent_state(False)
+        self.on_log('ERROR', f"Mark as sent failed: {error}")
+        if isinstance(error, WavelogAuthError):
+            self.show_wavelog_permission_error("Cannot mark QSOs as sent in Wavelog.", str(error))
+        else:
+            QMessageBox.critical(self, "Mark as Sent", f"Mark as sent failed:\n{error}")
+
     def _start_processing(self, source: str):
         if self.processing_active:
             return
@@ -554,9 +746,6 @@ class ProcessingTab(QWidget):
                 )
                 return
             config_to_use['adif_file_path'] = str(adif_file)
-
-        if source == 'wavelog' and not self.stations_loaded:
-            self.load_station_list(config_to_use)
 
         from_date = None
         to_date = None
@@ -662,7 +851,7 @@ class ProcessingTab(QWidget):
                 stats_text += f"Delivery methods: bureau: {int(delivery_method_stats.get('bureau', 0) or 0)}, direct: {int(delivery_method_stats.get('direct', 0) or 0)}\n"
 
             for country, stats in result['stats'].items():
-                if country in {'total_to_send', 'delivery_methods', 'callsign_filter', 'ignored_dxcc', 'already_sent'}:
+                if country in {'total_to_send', 'delivery_methods', 'callsign_filter', 'ignored_dxcc', 'already_sent', 'can_mark_as_sent'}:
                     continue
                 if isinstance(stats, dict):
                     stats_text += f"{country}: {stats.get('to_send', 0)}/{stats.get('total', 0)} (bureau: {stats.get('bureau', 0)}, direct: {stats.get('direct', 0)})\n"
@@ -695,7 +884,12 @@ class ProcessingTab(QWidget):
                     pzk_status = " (ignored after 3 errors)" if self.pzk_disabled else ""
                     stats_text += f"  PZK: {self.pzk_error_count} error(s){pzk_status}\n"
 
+            if result['stats'].get('can_mark_as_sent') and result['stats'].get('total_to_send'):
+                stats_text += "\nAfter sending the cards, use \"Mark as Sent in Wavelog\" with the output ADIF file.\n"
+
             QMessageBox.information(self, "Processing Complete", stats_text)
+        elif result.get('permission_error'):
+            self.show_wavelog_permission_error("Cannot download the log from Wavelog.", str(result.get('error')))
         else:
             QMessageBox.critical(self, "Processing Failed", f"Error: {result.get('error')}")
 

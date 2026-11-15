@@ -11,7 +11,6 @@ depends=(
   'python-reportlab'
   'python-pyqt6'
   'python-keyring'
-  'python-lxml'
 )
 makedepends=('python-pip')
 conflicts=('qslmaster-git')
@@ -49,7 +48,6 @@ package() {
   fi
 
   install -d "$pkgdir/usr/lib/qslmaster/vendor"
-  python3 -m pip install --no-cache-dir --no-deps --target "$pkgdir/usr/lib/qslmaster/vendor" pyhamtools==0.12.0
   python3 -m pip install --no-cache-dir --no-deps --target "$pkgdir/usr/lib/qslmaster/vendor" 'adif-io>=0.2.5'
 
   install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
