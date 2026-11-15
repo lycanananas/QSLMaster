@@ -9,7 +9,7 @@ Download QSO data from Wavelog or a local ADIF file and prepare ADIF output and 
 - CLI and GUI based workflows
 - ADIF loading/parsing from Wavelog API or local file
 - Date range filtering
-- Runtime source selection in GUI (`Process with Wavelog` or `Process with ADIF`)
+- Runtime source selection in GUI (`Process with Wavelog` or `Process ADIF File`)
 - Callsign allow/block filtering against normalized homecall without wildcard support
 - Ignored DXCC filtering and already sent QSO filtering
 - QSL bureau verification via QRZ.com (optional)
@@ -158,13 +158,13 @@ The country file and the PZK list are cached in `~/.cache/qslmaster/`. Set the `
 
 The GUI stores configuration in the user profile and keeps secrets in the system keyring.
 
-In GUI, the source is selected at runtime when starting processing. Use `Process with Wavelog` to download QSOs from Wavelog or `Process with ADIF` to select a local ADIF file for the current run.
+In GUI, the source is selected at runtime when starting processing. Use `Process with Wavelog` to download QSOs from Wavelog or `Process ADIF File` to select a local ADIF file for the current run.
 
 Wavelog connection settings remain optional until you actually start `Process with Wavelog`.
 
 GUI runtime-only options include:
 - PDF page options for partially used label pages
-- Include direct when no bureau is found
+- Use direct QSL when no bureau is found
 - Hard abort of a running process
 
 Config file locations:

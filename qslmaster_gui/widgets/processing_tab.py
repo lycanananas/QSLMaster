@@ -3,8 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QDateEdit, QCheckBox, QGroupBox, QTextEdit, QProgressBar,
-    QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
+    QPushButton, QDateEdit, QCheckBox, QGroupBox, QPlainTextEdit, QProgressBar,
+    QFileDialog, QComboBox, QListWidget, QListWidgetItem,
     QDialog, QDialogButtonBox, QRadioButton, QSpinBox
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSlot
@@ -12,6 +12,7 @@ from qslmaster_gui.dialogs.pdf_options_dialog import PdfOptionsDialog
 from qslmaster_gui.dialogs.mark_sent_dialog import MarkSentDialog
 from qslmaster_gui.workers.processor_worker import ProcessorWorker
 from qslmaster_gui.workers.task_worker import TaskWorker
+from qslmaster_gui.utils.messages import ask_yes_no, show_error, show_info, show_warning
 from qslmaster_cli.qslmaster_core import QSLProcessor
 from qslmaster_cli.wavelog import create_wavelog_api, WavelogAuthError
 logger = logging.getLogger(__name__)
@@ -71,12 +72,12 @@ class ProcessingTab(QWidget):
 
     def _get_pdf_options_summary(self) -> str:
         if not self.generate_pdf.isChecked():
-            return "Page options are disabled"
+            return "Enable PDF labels to set page options"
 
         if not self.pdf_draw_borders and not self.pdf_page_specs:
             return "No page options configured"
 
-        return "Page options are set"
+        return "Page options configured"
 
     def _refresh_pdf_options_summary(self):
         self.pdf_options_summary_label.setText(self._get_pdf_options_summary())
@@ -204,7 +205,7 @@ class ProcessingTab(QWidget):
             self._show_station_list_message("Cannot load stations from Wavelog", str(error))
 
     def show_wavelog_permission_error(self, context: str, error_message: str):
-        QMessageBox.warning(
+        show_warning(
             self,
             "Wavelog Permission Error",
             f"{context}\n\n{error_message}\n\n"
@@ -283,7 +284,7 @@ class ProcessingTab(QWidget):
         date_layout.addLayout(to_layout)
 
         quick_range_layout = QHBoxLayout()
-        self.select_range_btn = QPushButton("Select range...")
+        self.select_range_btn = QPushButton("Select Range...")
         self.select_range_btn.clicked.connect(self.open_select_range_dialog)
         self.select_range_btn.setMaximumWidth(150)
         quick_range_layout.addWidget(self.select_range_btn)
@@ -309,7 +310,7 @@ class ProcessingTab(QWidget):
         self.output_adif_layout.addWidget(self.browse_adif_btn)
         output_layout.addLayout(self.output_adif_layout)
 
-        self.generate_pdf = QCheckBox("Generate PDF Labels")
+        self.generate_pdf = QCheckBox("Generate PDF labels")
         self.generate_pdf.setChecked(True)
         self.generate_pdf.stateChanged.connect(self.on_generate_pdf_toggled)
         output_layout.addWidget(self.generate_pdf)
@@ -335,7 +336,7 @@ class ProcessingTab(QWidget):
         pdf_options_row.addWidget(self.pdf_options_summary_label, 1)
         output_layout.addLayout(pdf_options_row)
 
-        self.include_direct_when_no_bureau = QCheckBox("Include direct when no bureau is found")
+        self.include_direct_when_no_bureau = QCheckBox("Use direct QSL when no bureau is found")
         self.include_direct_when_no_bureau.setChecked(False)
         output_layout.addWidget(self.include_direct_when_no_bureau)
 
@@ -351,7 +352,7 @@ class ProcessingTab(QWidget):
         self.process_wavelog_button.setMinimumHeight(40)
         self.process_wavelog_button.clicked.connect(self.start_wavelog_processing)
         process_buttons_layout.addWidget(self.process_wavelog_button)
-        self.process_adif_button = QPushButton("Process with ADIF")
+        self.process_adif_button = QPushButton("Process ADIF File")
         self.process_adif_button.setMinimumHeight(40)
         self.process_adif_button.clicked.connect(self.start_adif_processing)
         process_buttons_layout.addWidget(self.process_adif_button)
@@ -381,7 +382,7 @@ class ProcessingTab(QWidget):
         self.log_level_combo.currentTextChanged.connect(self.on_log_level_changed)
         log_controls.addWidget(self.log_level_combo)
         layout.addLayout(log_controls)
-        self.log_output = QTextEdit()
+        self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
         layout.addWidget(self.log_output)
         self.setLayout(layout)
@@ -503,7 +504,7 @@ class ProcessingTab(QWidget):
         try:
             self.pdf_page_specs = dialog.get_page_specs()
         except ValueError as e:
-            QMessageBox.warning(self, "PDF Page Options Error", str(e))
+            show_warning(self, "PDF Page Options Error", str(e))
             return
         self.pdf_draw_borders = dialog.get_draw_borders()
         self.pdf_page_options_text = dialog.get_page_options_text()
@@ -548,14 +549,7 @@ class ProcessingTab(QWidget):
         file_list = '\n'.join([f"  • {ftype}: {path}" for ftype, path in files_to_check])
         message = f"The following files already exist:\n{file_list}\n\nDo you want to overwrite them?"
         
-        reply = QMessageBox.question(
-            self,
-            "Files Already Exist",
-            message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        return reply == QMessageBox.StandardButton.Yes
+        return ask_yes_no(self, "Files Already Exist", message)
 
     def browse_adif_file(self):
         file_path, _ = QFileDialog.getSaveFileName(
@@ -609,13 +603,13 @@ class ProcessingTab(QWidget):
         if self.mark_sent_active and self.mark_sent_worker is not None:
             self.mark_sent_worker.request_stop()
             self.mark_sent_button.setEnabled(False)
-            self.mark_sent_button.setText("Cancelling")
+            self.mark_sent_button.setText("Cancelling...")
             self.on_log('WARNING', "Mark as sent cancel requested by user")
             return
         if self.processing_active or self.mark_sent_active:
             return
         if not self._has_wavelog_config(self.current_config):
-            QMessageBox.warning(self, "Mark as Sent", "Wavelog URL and API key are required. Configure them in Edit Settings.")
+            show_warning(self, "Mark as Sent", "Wavelog URL and API key are required. Set them in Edit Settings.")
             return
 
         adif_path = self._select_mark_sent_file()
@@ -626,7 +620,7 @@ class ProcessingTab(QWidget):
         config_to_use['source'] = 'wavelog'
         self.log_output.clear()
         self.progress_bar.setValue(0)
-        self._set_mark_sent_state(True, "Matching QSOs")
+        self._set_mark_sent_state(True, "Matching QSOs...")
 
         def task(worker):
             processor = QSLProcessor(
@@ -650,7 +644,7 @@ class ProcessingTab(QWidget):
         processor, plan = result
         if not plan.matched:
             self._set_mark_sent_state(False)
-            QMessageBox.information(
+            show_info(
                 self,
                 "Mark as Sent",
                 f"No QSOs from the ADIF file were matched in Wavelog.\n\n"
@@ -693,9 +687,9 @@ class ProcessingTab(QWidget):
             message += "\n\nCancelled before all QSOs were marked. Running Mark as Sent again with the same file is safe."
         if result.failed:
             message += f"\n\nFailed: {len(result.failed)}. Details are in the processing log."
-            QMessageBox.warning(self, "Mark as Sent", message)
+            show_warning(self, "Mark as Sent", message)
         else:
-            QMessageBox.information(self, "Mark as Sent", message)
+            show_info(self, "Mark as Sent", message)
 
     def _on_mark_sent_failed(self, error):
         self._set_mark_sent_state(False)
@@ -703,14 +697,14 @@ class ProcessingTab(QWidget):
         if isinstance(error, WavelogAuthError):
             self.show_wavelog_permission_error("Cannot mark QSOs as sent in Wavelog.", str(error))
         else:
-            QMessageBox.critical(self, "Mark as Sent", f"Mark as sent failed:\n{error}")
+            show_error(self, "Mark as Sent", f"Mark as sent failed:\n{error}")
 
     def _start_processing(self, source: str):
         if self.processing_active:
             return
 
         if not self.current_config:
-            QMessageBox.warning(self, "Error", "No configuration loaded")
+            show_warning(self, "Error", "No configuration loaded.")
             return
 
         config_to_use = self.current_config.copy()
@@ -719,18 +713,18 @@ class ProcessingTab(QWidget):
 
         if source == 'wavelog':
             if not config_to_use.get('api_key'):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Configuration Error",
-                    "API Key not found. Please configure it in Settings"
+                    "API key is missing. Set it in Edit Settings."
                 )
                 return
 
             if not config_to_use.get('wavelog_url'):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Configuration Error",
-                    "Wavelog URL not found. Please configure it in Settings"
+                    "Wavelog URL is missing. Set it in Edit Settings."
                 )
                 return
         else:
@@ -739,7 +733,7 @@ class ProcessingTab(QWidget):
                 return
             adif_file = Path(adif_path)
             if not adif_file.exists() or not adif_file.is_file():
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Configuration Error",
                     f"ADIF file does not exist: {adif_path}"
@@ -811,7 +805,7 @@ class ProcessingTab(QWidget):
 
     @pyqtSlot(str)
     def on_progress(self, message: str):
-        self.log_output.append(f"[PROGRESS] {message}")
+        self.log_output.appendPlainText(f"[PROGRESS] {message}")
 
     @pyqtSlot(int, int)
     def on_progress_value(self, current: int, total: int):
@@ -821,7 +815,7 @@ class ProcessingTab(QWidget):
 
     @pyqtSlot(str, str)
     def on_log(self, level: str, message: str):
-        self.log_output.append(f"[{level}] {message}")
+        self.log_output.appendPlainText(f"[{level}] {message}")
         message_lower = message.lower()
         if "qrz result:" in message_lower and "lookup error" in message_lower:
             self.qrz_error_count += 1
@@ -887,22 +881,22 @@ class ProcessingTab(QWidget):
             if result['stats'].get('can_mark_as_sent') and result['stats'].get('total_to_send'):
                 stats_text += "\nAfter sending the cards, use \"Mark as Sent in Wavelog\" with the output ADIF file.\n"
 
-            QMessageBox.information(self, "Processing Complete", stats_text)
+            show_info(self, "Processing Complete", stats_text)
         elif result.get('permission_error'):
             self.show_wavelog_permission_error("Cannot download the log from Wavelog.", str(result.get('error')))
         else:
-            QMessageBox.critical(self, "Processing Failed", f"Error: {result.get('error')}")
+            show_error(self, "Processing Failed", f"Error: {result.get('error')}")
 
     @pyqtSlot(str)
     def on_error(self, error_message: str):
         self.progress_bar.setVisible(False)
         self._set_processing_state(False)
         self.processor_worker = None
-        QMessageBox.critical(self, "Processing Error", f"An error occurred: {error_message}")
+        show_error(self, "Processing Error", f"An error occurred: {error_message}")
 
     @pyqtSlot(str)
     def on_cancelled(self, message: str):
         self.progress_bar.setVisible(False)
         self._set_processing_state(False)
         self.processor_worker = None
-        QMessageBox.information(self, "Processing Aborted", message)
+        show_info(self, "Processing Aborted", message)

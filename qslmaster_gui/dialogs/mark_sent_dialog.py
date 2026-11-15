@@ -3,7 +3,7 @@ from datetime import date
 from PyQt6.QtWidgets import (
     QDateEdit, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QListWidget, QVBoxLayout
 )
-from PyQt6.QtCore import QDate
+from PyQt6.QtCore import QDate, Qt
 
 from qslmaster_cli.mark_sent import MarkSentPlan
 from qslmaster_cli.qso_utils import format_qso_log_label
@@ -32,6 +32,7 @@ class MarkSentDialog(QDialog):
         layout = QVBoxLayout()
 
         file_label = QLabel(f"ADIF file: {adif_path}")
+        file_label.setTextFormat(Qt.TextFormat.PlainText)
         file_label.setWordWrap(True)
         layout.addWidget(file_label)
 
@@ -50,12 +51,12 @@ class MarkSentDialog(QDialog):
         layout.addWidget(matched_list)
 
         if plan.not_found or plan.ambiguous:
-            skipped_note = QLabel("QSOs that were not found or matched more than one Wavelog QSO are listed in the processing log and stay unchanged.")
+            skipped_note = QLabel("QSOs that were not found, or that matched more than one Wavelog QSO, are listed in the processing log and stay unchanged.")
             skipped_note.setWordWrap(True)
             layout.addWidget(skipped_note)
 
         date_layout = QHBoxLayout()
-        date_layout.addWidget(QLabel("QSL sent date:"))
+        date_layout.addWidget(QLabel("QSL Sent Date:"))
         self.sent_date_input = QDateEdit()
         self.sent_date_input.setCalendarPopup(True)
         self.sent_date_input.setDate(QDate.currentDate())

@@ -4,6 +4,20 @@ All notable changes to QSLMaster are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 This file is the single source for GitHub release notes and the Debian package changelog, see [RELEASING.md](RELEASING.md).
 
+## [1.6.1] - 2026-11-15
+
+### Added
+- Debian package for Ubuntu 26.04.
+
+### Changed
+- GUI texts reviewed: consistent capitalization, full sentences in messages and clearer descriptions of the callsign filter and PDF page options. "Process with ADIF" is now "Process ADIF File".
+
+### Fixed
+- Error messages, the processing log and configuration names are always shown as plain text. Before, text that looked like HTML (for example an error page returned by the server) could be rendered as formatting or partly hidden.
+
+### Removed
+- Debian package for Ubuntu 22.04.
+
 ## [1.6.0] - 2026-11-15
 
 ### Added

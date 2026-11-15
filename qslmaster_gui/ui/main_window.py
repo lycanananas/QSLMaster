@@ -112,7 +112,7 @@ class QSLMasterMainWindow(QMainWindow):
 
             if not configs:
                 self.statusBar().showMessage(
-                    "No configurations found. Click 'Edit Settings' to create one"
+                    "No configurations found. Click Edit Settings to create one."
                 )
                 return
 
@@ -166,7 +166,7 @@ class QSLMasterMainWindow(QMainWindow):
         logo_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(logo_label)
 
-        title_label = QLabel("QSL Master")
+        title_label = QLabel("QSLMaster")
         title_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         title_label.setStyleSheet("font-weight: 700; font-size: 24px;")
         layout.addWidget(title_label)
@@ -177,6 +177,7 @@ class QSLMasterMainWindow(QMainWindow):
         layout.addWidget(author_label)
 
         email_label = QLabel("<a href=\"mailto:sq5fox@lycanananas.pl\">sq5fox@lycanananas.pl</a>")
+        email_label.setTextFormat(Qt.TextFormat.RichText)
         email_label.setOpenExternalLinks(True)
         email_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(email_label)
@@ -194,6 +195,7 @@ class QSLMasterMainWindow(QMainWindow):
             "<a href=\"https://github.com/lycanananas/QSLMaster/issues\">Issue Tracker</a><br/>"
             "<a href=\"https://github.com/lycanananas/QSLMaster/blob/main/LICENSE.md\">License</a>"
         )
+        links_label.setTextFormat(Qt.TextFormat.RichText)
         links_label.setOpenExternalLinks(True)
         links_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(links_label)
@@ -212,7 +214,7 @@ class QSLMasterMainWindow(QMainWindow):
         ):
             self.processing_tab.set_config(None)
             self.statusBar().showMessage(
-                "Configuration deleted. Please select another configuration."
+                "Configuration deleted. Select another configuration."
             )
 
     def _on_config_created(self, created_config_id: str):

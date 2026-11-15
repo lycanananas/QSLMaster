@@ -66,7 +66,7 @@ python packaging/changelog.py debian 1.6.0
 9. The `release` workflow then:
    - checks that the tag matches `SOURCE_VERSION`, points to a commit on `master` and has a dated `CHANGELOG.md` section,
    - runs the unit tests,
-   - builds the Debian packages (Ubuntu 22.04 and 24.04), the Arch Linux package and the Windows installer and ZIP,
+   - builds the Debian packages (Ubuntu 24.04 and 26.04), the Arch Linux package and the Windows installer and ZIP,
    - publishes a GitHub release with the changelog section as release notes and `SHA256SUMS` for all files.
 10. Check the published release: all assets are present, the release notes are correct, and at least one package installs and starts.
 
