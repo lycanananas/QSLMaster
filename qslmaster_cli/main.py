@@ -1,9 +1,12 @@
 import argparse
 import sys
 import logging
+from datetime import datetime
 
 from .config import load_config, validate_config, ConfigError
-from .qslmaster_core import QSLProcessor
+from .qslmaster_core import QSLProcessor, QSLProcessorError
+from .adif_files import ADIFFileError
+from .wavelog import WavelogAPIError
 from .pdf_labels import normalize_pdf_page_specs, normalize_pdf_page_offsets
 
 
@@ -25,6 +28,22 @@ def setup_logging(verbose: bool = False) -> None:
     root_logger.addHandler(handler)
 
 
+def run_mark_sent(processor: QSLProcessor, adif_path: str, sent_date, dry_run: bool, logger: logging.Logger) -> int:
+    try:
+        plan = processor.plan_mark_as_sent_from_adif(adif_path, sent_date)
+        if dry_run:
+            logger.info(f"Dry run: {len(plan.matched)} QSO(s) would be marked as sent in Wavelog")
+            return 0
+        if not plan.matched:
+            logger.warning("No QSOs matched in Wavelog, nothing to mark")
+            return 1
+        result = processor.apply_mark_as_sent(plan)
+        return 0 if not result.failed else 1
+    except (QSLProcessorError, WavelogAPIError, ADIFFileError) as e:
+        logger.error(f"Mark as sent failed: {e}")
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='QSLMaster - Prepare QSL card labels from Wavelog or ADIF file source',
@@ -38,6 +57,8 @@ Usage examples:
     %(prog)s -c config.json --list-stations-only
     %(prog)s -c config.json --station 3 -o output.adif
     %(prog)s -c config.json --callsign-list-mode allow --callsign-pattern SP3ABC --callsign-pattern SP3ABC/* -o output.adif
+    %(prog)s -c config.json --mark-sent output.adif --dry-run
+    %(prog)s -c config.json --mark-sent output.adif --sent-date 2026-11-20
         """
     )
     
@@ -132,6 +153,27 @@ Usage examples:
     )
 
     parser.add_argument(
+        '--mark-sent',
+        dest='mark_sent',
+        type=str,
+        default=None,
+        help='Mark QSOs from a QSLMaster output ADIF file as sent in Wavelog (API v2 token with qso:write scope)'
+    )
+
+    parser.add_argument(
+        '--sent-date',
+        type=str,
+        default=None,
+        help='QSL sent date used with --mark-sent (format: YYYY-MM-DD, default: today)'
+    )
+
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='With --mark-sent: only match QSOs with Wavelog and show the summary, do not change anything'
+    )
+
+    parser.add_argument(
         '--pdf-page-offsets',
         type=str,
         default=None,
@@ -159,8 +201,21 @@ Usage examples:
 
     args = parser.parse_args()
 
-    if not args.list_stations_only and not args.output_adif:
-        parser.error('--output-adif is required unless --list-stations-only is used')
+    if args.mark_sent and (args.output_adif or args.generate_pdf or args.list_stations_only):
+        parser.error('--mark-sent cannot be combined with --output-adif, --generate-pdf or --list-stations-only')
+
+    if (args.sent_date or args.dry_run) and not args.mark_sent:
+        parser.error('--sent-date and --dry-run require --mark-sent')
+
+    sent_date = None
+    if args.sent_date:
+        try:
+            sent_date = datetime.strptime(args.sent_date, '%Y-%m-%d').date()
+        except ValueError:
+            parser.error('--sent-date must use format YYYY-MM-DD')
+
+    if not args.list_stations_only and not args.mark_sent and not args.output_adif:
+        parser.error('--output-adif is required unless --list-stations-only or --mark-sent is used')
 
     if args.list_stations_only and args.generate_pdf:
         parser.error('--generate-pdf cannot be used with --list-stations-only')
@@ -184,6 +239,8 @@ Usage examples:
 
         if args.source:
             config['source'] = args.source
+        if args.mark_sent:
+            config['source'] = 'wavelog'
         if args.adif_source:
             config['adif_file_path'] = args.adif_source
         if args.callsign_list_mode is not None:
@@ -212,6 +269,9 @@ Usage examples:
                 logger.debug(f"ADIF file path: {config.get('adif_file_path', '')}")
         
         processor = QSLProcessor(config)
+
+        if args.mark_sent:
+            sys.exit(run_mark_sent(processor, args.mark_sent, sent_date, args.dry_run, logger))
         
         station_selectors = [s.strip() for s in args.station.split(',')] if args.station and args.station.lower() != 'all' else ['all']
         result = processor.process(

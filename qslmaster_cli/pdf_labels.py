@@ -3,10 +3,9 @@ from typing import List, Dict, Tuple
 from datetime import datetime
 from pathlib import Path
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm, inch
+from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
-from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -40,6 +39,10 @@ SPACING_AFTER_VIA = 2 * mm
 SPACING_NO_VIA = 1 * mm
 TOTAL_SEPARATOR_SPACE = 2 * mm
 SPACING_BETWEEN_FIELDS = 3 * mm
+# Layout used when the label carries an extra "From:" line under "Via:"
+SPACING_AFTER_VIA_WITH_FROM = 3.1 * mm
+SPACING_AFTER_FROM = 3.2 * mm
+SPACING_BETWEEN_FIELDS_WITH_FROM = 2.7 * mm
 
 LOGO_IMAGE_PATH = "logo.png"
 LOGO_WIDTH = 15 * mm
@@ -103,15 +106,44 @@ def format_time(time_str: str) -> str:
         return time_str
 
 
-def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False, logo_path: str = "logo.png"):
-    regular_font_name, bold_font_name = get_pdf_font_names()
-    callsign = qso.get('CALL', 'N/A')
-    via = qso.get('QSL_VIA', '').strip()
+def normalize_callsign(value) -> str:
+    return str(value or '').strip().upper()
+
+
+def get_from_callsign(qso: Dict) -> str:
+    """Station callsign the QSO was made with, printed as "From:" on the label."""
+    return normalize_callsign(qso.get('STATION_CALLSIGN'))
+
+
+def get_label_via(qso: Dict) -> str:
+    via = str(qso.get('QSL_VIA', '') or '').strip()
     qsl_sent_via = str(qso.get('QSL_SENT_VIA', '') or '').strip().upper()
     if not via and qsl_sent_via == 'D':
         via = 'DIRECT'
     elif not via and qsl_sent_via == 'B':
         via = 'BUREAU'
+    return via
+
+
+def _draw_field(c: canvas.Canvas, x: float, y: float, label: str, value: str, size: float, underline: bool = False):
+    regular_font_name, bold_font_name = get_pdf_font_names()
+    c.setFont(bold_font_name, size)
+    c.drawString(x, y, f"{label}:")
+    c.setFont(regular_font_name, size)
+    value_x = x + c.stringWidth(f"{label}: ", bold_font_name, size)
+    c.drawString(value_x, y, value)
+    if underline:
+        value_width = c.stringWidth(value, regular_font_name, size)
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(LINE_WIDTH)
+        c.line(value_x, y - UNDERLINE_OFFSET, value_x + value_width, y - UNDERLINE_OFFSET)
+
+
+def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, height: float, debug_mode: bool = False, logo_path: str = "logo.png"):
+    regular_font_name, bold_font_name = get_pdf_font_names()
+    callsign = qso.get('CALL', 'N/A')
+    via = get_label_via(qso)
+    from_callsign = get_from_callsign(qso)
     date = format_date(qso.get('QSO_DATE', ''))
     time = format_time(qso.get('TIME_ON', ''))
     rst_sent = qso.get('RST_SENT', '')
@@ -136,68 +168,40 @@ def draw_label(c: canvas.Canvas, qso: Dict, x: float, y: float, width: float, he
     c.setLineWidth(LINE_WIDTH)
     c.line(callsign_x, current_y - UNDERLINE_OFFSET, callsign_x + callsign_width, current_y - UNDERLINE_OFFSET)
     current_y -= SPACING_AFTER_HEADER
-    
-    via_y = current_y
-    
-    if via:
-        c.setFont(bold_font_name, DATA_FONT_SIZE)
-        c.drawString(x_start, current_y, "Via:")
-        c.setFont(regular_font_name, DATA_FONT_SIZE)
-        via_x = x_start + c.stringWidth("Via: ", bold_font_name, DATA_FONT_SIZE)
-        c.drawString(via_x, current_y, via)
-        via_width = c.stringWidth(via, regular_font_name, DATA_FONT_SIZE)
-        c.setStrokeColor(colors.black)
-        c.setLineWidth(LINE_WIDTH)
-        c.line(via_x, current_y - UNDERLINE_OFFSET, via_x + via_width, current_y - UNDERLINE_OFFSET)
-        current_y -= SPACING_AFTER_VIA
+
+    field_spacing = SPACING_BETWEEN_FIELDS
+    if via and from_callsign:
+        _draw_field(c, x_start, current_y, "Via", via, DATA_FONT_SIZE, underline=True)
+        current_y -= SPACING_AFTER_VIA_WITH_FROM
+        _draw_field(c, x_start, current_y, "From", from_callsign, DATA_FONT_SIZE, underline=True)
+        current_y -= SPACING_AFTER_FROM
+        field_spacing = SPACING_BETWEEN_FIELDS_WITH_FROM
     else:
-        current_y = via_y - SPACING_AFTER_VIA
-    
-    current_y -= TOTAL_SEPARATOR_SPACE
-    
-    c.setFont(bold_font_name, DATA_FONT_SIZE)
-    c.drawString(x_start, current_y, "Date:")
-    c.setFont(regular_font_name, DATA_FONT_SIZE)
-    date_x = x_start + c.stringWidth("Date: ", bold_font_name, DATA_FONT_SIZE)
-    c.drawString(date_x, current_y, date)
-    current_y -= SPACING_BETWEEN_FIELDS
-    
-    c.setFont(bold_font_name, DATA_FONT_SIZE)
-    c.drawString(x_start, current_y, "Time:")
-    c.setFont(regular_font_name, DATA_FONT_SIZE)
-    time_x = x_start + c.stringWidth("Time: ", bold_font_name, DATA_FONT_SIZE)
-    c.drawString(time_x, current_y, f"{time} UTC")
-    current_y -= SPACING_BETWEEN_FIELDS
-    
-    c.setFont(bold_font_name, DATA_FONT_SIZE)
-    c.drawString(x_start, current_y, "RST:")
-    c.setFont(regular_font_name, DATA_FONT_SIZE)
-    rst_x = x_start + c.stringWidth("RST: ", bold_font_name, DATA_FONT_SIZE)
-    c.drawString(rst_x, current_y, rst_sent)
-    current_y -= SPACING_BETWEEN_FIELDS
-    
-    c.setFont(bold_font_name, DATA_FONT_SIZE)
-    c.drawString(x_start, current_y, "Mode:")
-    c.setFont(regular_font_name, DATA_FONT_SIZE)
-    mode_x = x_start + c.stringWidth("Mode: ", bold_font_name, DATA_FONT_SIZE)
-    c.drawString(mode_x, current_y, display_mode)
-    current_y -= SPACING_BETWEEN_FIELDS
-    
+        if via:
+            _draw_field(c, x_start, current_y, "Via", via, DATA_FONT_SIZE, underline=True)
+        elif from_callsign:
+            _draw_field(c, x_start, current_y, "From", from_callsign, DATA_FONT_SIZE, underline=True)
+        current_y -= SPACING_AFTER_VIA + TOTAL_SEPARATOR_SPACE
+
+    _draw_field(c, x_start, current_y, "Date", date, DATA_FONT_SIZE)
+    current_y -= field_spacing
+    _draw_field(c, x_start, current_y, "Time", f"{time} UTC", DATA_FONT_SIZE)
+    current_y -= field_spacing
+    _draw_field(c, x_start, current_y, "RST", rst_sent, DATA_FONT_SIZE)
+    current_y -= field_spacing
+    _draw_field(c, x_start, current_y, "Mode", display_mode, DATA_FONT_SIZE)
+    current_y -= field_spacing
     if band:
-        c.setFont(bold_font_name, DATA_FONT_SIZE)
-        c.drawString(x_start, current_y, "Band:")
-        c.setFont(regular_font_name, DATA_FONT_SIZE)
-        band_x = x_start + c.stringWidth("Band: ", bold_font_name, DATA_FONT_SIZE)
-        c.drawString(band_x, current_y, band)
+        _draw_field(c, x_start, current_y, "Band", band, DATA_FONT_SIZE)
     
     logo_x = x + width - LABEL_PADDING - LOGO_WIDTH - LOGO_RIGHT_MARGIN
     logo_y = y - LABEL_PADDING - 1 * mm - LOGO_HEIGHT
     
-    resolved_logo_path = Path(logo_path)
+    resolved_logo_path = Path(logo_path or LOGO_IMAGE_PATH)
     if not resolved_logo_path.is_absolute():
-        resolved_logo_path = Path(__file__).parent / logo_path
+        resolved_logo_path = Path(__file__).parent / resolved_logo_path
     
-    if resolved_logo_path.exists():
+    if resolved_logo_path.is_file():
         try:
             img = ImageReader(str(resolved_logo_path))
             c.drawImage(img, logo_x, logo_y, width=LOGO_WIDTH, height=LOGO_HEIGHT, mask='auto')
@@ -382,12 +386,8 @@ def preview_label_data(qsos: List[Dict], limit: int = 3):
     
     for i, qso in enumerate(qsos[:limit]):
         callsign = qso.get('CALL', 'N/A')
-        via = qso.get('QSL_VIA', '').strip()
-        qsl_sent_via = str(qso.get('QSL_SENT_VIA', '') or '').strip().upper()
-        if not via and qsl_sent_via == 'D':
-            via = 'DIRECT'
-        elif not via and qsl_sent_via == 'B':
-            via = 'BIURO'
+        via = get_label_via(qso)
+        from_callsign = get_from_callsign(qso)
         date = format_date(qso.get('QSO_DATE', ''))
         time = format_time(qso.get('TIME_ON', ''))
         rst = qso.get('RST_SENT', '')
@@ -398,5 +398,7 @@ def preview_label_data(qsos: List[Dict], limit: int = 3):
         LogHandler.get_instance().log('INFO', f"    To Radio: {callsign}")
         if via:
             LogHandler.get_instance().log('INFO', f"    Via: {via}")
+        if from_callsign:
+            LogHandler.get_instance().log('INFO', f"    From: {from_callsign}")
         LogHandler.get_instance().log('INFO', f"    Date: {date}, Time: {time}")
         LogHandler.get_instance().log('INFO', f"    RST: {rst}, Mode: {mode}, Band: {band}")

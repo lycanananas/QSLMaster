@@ -9,7 +9,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from qslmaster_cli.callsign_utils import extract_homecall
-from qslmaster_cli.poland import _fetch_pzk_member_info
+from qslmaster_cli.poland import _fetch_pzk_qsl_list, _lookup_pzk_ot, _parse_pzk_qsl_list
 
 
 DEFAULT_CALLSIGNS = [
@@ -23,9 +23,44 @@ DEFAULT_CALLSIGNS = [
     'sp5lls', 'sq5tla', 'sq5fox', 'sp0fur', 'n0call',
 ]
 
+PARSER_SAMPLE = (
+    b'WYKAZ QSL [2026-11-15 / 16:14:01]\r\n'
+    b'SP3AEZ,SP6AEZ;01\r\n'
+    b'SP4UEF,SP8UEF.;21\r\n'
+    b'SN0S;06\r\n'
+    b'SN0S;73\r\n'
+    b'ZL/SP5EAQ;25\r\n'
+    b'SP5ABB;15\r\n'
+    b'\r\n'
+)
+
+PARSER_CASES = [
+    ('SP3AEZ', '01'),
+    ('SP6AEZ', '01'),
+    ('SP8UEF', '21'),
+    ('SN0S', '06'),
+    ('ZL/SP5EAQ', '25'),
+    ('SP5ABB/P', '15'),
+    ('SP5ABB/9', '15'),
+    ('SP5XXX', None),
+]
+
+
+def _run_parser_selftest() -> int:
+    qsl_list = _parse_pzk_qsl_list(PARSER_SAMPLE)
+    fail = 0
+    for call, expected in PARSER_CASES:
+        actual = _lookup_pzk_ot(qsl_list, call)
+        if actual == expected:
+            print(f'✓ parser {call:12} ot={actual!r}')
+        else:
+            print(f'✗ parser {call:12} ot={actual!r} expected={expected!r}')
+            fail += 1
+    return fail
+
 
 def _parse_args(argv: List[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='PZK member lookup self-test')
+    parser = argparse.ArgumentParser(description='PZK QSL list lookup self-test')
     parser.add_argument('callsigns', nargs='*', help='Optional callsigns to test (overrides default list)')
     return parser.parse_args(argv)
 
@@ -35,29 +70,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     callsigns = args.callsigns if args.callsigns else list(DEFAULT_CALLSIGNS)
 
     ok = 0
-    fail = 0
+    fail = _run_parser_selftest()
+
+    t0 = time.perf_counter()
+    try:
+        qsl_list = _fetch_pzk_qsl_list()
+    except Exception as e:
+        print(f'✗ download error={type(e).__name__}: {e}')
+        print(f'\nSummary: ok={ok} fail={fail + 1}')
+        return 1
+    print(f'✓ download {len(qsl_list)} callsigns ({(time.perf_counter() - t0) * 1000:.0f}ms)')
+
     for raw_call in callsigns:
-        t0 = time.perf_counter()
         fullcall = str(raw_call).strip()
         if not fullcall:
             continue
         homecall = extract_homecall(fullcall)
-        try:
-            info = _fetch_pzk_member_info(homecall)
-            dt_ms = (time.perf_counter() - t0) * 1000
-            if not info:
-                print(f'✓ {fullcall.upper():12} homecall={homecall:10} member=False ({dt_ms:.0f}ms)')
-                ok += 1
-                continue
-            status_text, ot_text = info
-            is_member = 'Jest' in (status_text or '')
-            ot_first = (ot_text or '').strip().split()[0] if (ot_text or '').strip() else ''
-            print(f'✓ {fullcall.upper():12} homecall={homecall:10} member={is_member!s:<5} ot={ot_first!r} ({dt_ms:.0f}ms)')
-            ok += 1
-        except Exception as e:
-            dt_ms = (time.perf_counter() - t0) * 1000
-            print(f'✗ {fullcall.upper():12} homecall={homecall:10} error={type(e).__name__}: {e} ({dt_ms:.0f}ms)')
-            fail += 1
+        ot = _lookup_pzk_ot(qsl_list, fullcall)
+        print(f'✓ {fullcall.upper():12} homecall={homecall:10} member={ot is not None!s:<5} ot={ot or ""!r}')
+        ok += 1
 
     print(f'\nSummary: ok={ok} fail={fail}')
     return 0 if fail == 0 else 1

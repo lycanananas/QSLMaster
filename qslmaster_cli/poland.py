@@ -1,67 +1,94 @@
 import logging
 import time
+from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Callable
 from collections import defaultdict
 
 import requests
 
+from .cache import get_cache_dir, read_cache_metadata, write_cache_metadata
 from .callsign_utils import extract_homecall
-
-try:
-    from lxml import html as lxml_html
-except Exception:
-    lxml_html = None
+from .qso_utils import mark_qsos_to_send
 
 
 logger = logging.getLogger(__name__)
+
+PZK_QSL_LIST_URL = "https://pzk.org.pl/osec_qsl.txt"
 
 
 class PZKAPIError(Exception):
     pass
 
 
-def _parse_pzk_response(content: bytes) -> Optional[Tuple[str, str]]:
-    if lxml_html is None:
-        return None
-    tree = lxml_html.fromstring(content)
-    status_nodes = tree.xpath("/html/body/table/tr[4]/td/table[2]/tr/td/table/td[2]/table[2]/tr[4]/td[2]")
-    ot_nodes = tree.xpath("/html/body/table/tr[4]/td/table[2]/tr/td/table/td[2]/table[2]/tr[5]/td[2]")
-    status_text = status_nodes[0].text_content().strip() if status_nodes else ""
-    ot_text = ot_nodes[0].text_content().strip() if ot_nodes else ""
-    if not status_text and not ot_text:
-        return None
-    return status_text, ot_text
+def get_pzk_cache_paths() -> Tuple[Path, Path]:
+    cache_dir = get_cache_dir()
+    return cache_dir / 'pzk_osec_qsl.txt', cache_dir / '.pzk_metadata.json'
 
 
-def _fetch_pzk_member_info(homecall: str) -> Optional[Tuple[str, str]]:
-    post_data = {
-        "ec_view_members_znak_pokaz": homecall,
-        "ec_view_members_action": "view_selected_members",
-        "Submit": "Poka%BF",
-    }
+def _parse_pzk_qsl_list(content: bytes) -> Dict[str, str]:
+    text = content.decode("cp1250", errors="replace")
+    qsl_list: Dict[str, str] = {}
+    for line in text.splitlines()[1:]:
+        line = line.strip()
+        if ";" not in line:
+            continue
+        calls_text, ot_text = line.rsplit(";", 1)
+        ot_text = ot_text.strip()
+        if not ot_text:
+            continue
+        for call in calls_text.split(","):
+            call = call.strip().strip(".").upper()
+            if call:
+                qsl_list.setdefault(call, ot_text)
+    return qsl_list
+
+
+def _download_pzk_qsl_list() -> Tuple[bytes, Dict[str, str]]:
     t_start = time.perf_counter()
     try:
-        response = requests.post(
-            "https://pzk.org.pl/osec_ec_members_view.php",
-            data=post_data,
-            timeout=20,
-        )
+        response = requests.get(PZK_QSL_LIST_URL, timeout=30)
     except requests.exceptions.RequestException as e:
         raise PZKAPIError(f"PZK request failed: {e}")
     t_http = time.perf_counter()
-    http_time = (t_http - t_start) * 1000
-    
+
     if response.status_code != 200:
         raise PZKAPIError(f"PZK HTTP error: {response.status_code}")
-    
-    result = _parse_pzk_response(response.content)
+
+    qsl_list = _parse_pzk_qsl_list(response.content)
+    if not qsl_list:
+        raise PZKAPIError("PZK QSL list is empty or has an unexpected format")
     t_end = time.perf_counter()
-    parse_time = (t_end - t_http) * 1000
-    total_time = (t_end - t_start) * 1000
-    
-    logger.debug(f"PZK lookup {homecall}: total={total_time:.1f}ms (HTTP={http_time:.1f}ms, parse={parse_time:.1f}ms)")
-    
-    return result
+
+    logger.debug(f"PZK QSL list: {len(qsl_list)} callsigns, total={(t_end - t_start) * 1000:.1f}ms (HTTP={(t_http - t_start) * 1000:.1f}ms, parse={(t_end - t_http) * 1000:.1f}ms)")
+    return response.content, qsl_list
+
+
+def _fetch_pzk_qsl_list(log: Optional[Callable[[str, str], None]] = None) -> Dict[str, str]:
+    cache_file, metadata_file = get_pzk_cache_paths()
+    try:
+        content, qsl_list = _download_pzk_qsl_list()
+    except PZKAPIError as e:
+        cached_list = _parse_pzk_qsl_list(cache_file.read_bytes()) if cache_file.exists() else {}
+        if not cached_list:
+            raise
+        downloaded_at = read_cache_metadata(metadata_file).get('downloaded_at', 'unknown date')
+        if log:
+            log('WARNING', f"  PZK QSL list download failed ({e}), using cached copy from {downloaded_at}")
+        return cached_list
+
+    try:
+        cache_file.write_bytes(content)
+        write_cache_metadata(metadata_file, PZK_QSL_LIST_URL, callsigns=len(qsl_list))
+    except OSError as e:
+        logger.debug(f"Could not write PZK QSL list cache: {e}")
+    return qsl_list
+
+
+def _lookup_pzk_ot(qsl_list: Dict[str, str], fullcall: str) -> Optional[str]:
+    fullcall = fullcall.strip().upper()
+    if fullcall in qsl_list:
+        return qsl_list[fullcall]
+    return qsl_list.get(extract_homecall(fullcall))
 
 
 def process_qsos_poland(qsos: List, include_direct_when_no_bureau: bool = False, log_callback: Optional[Callable[[str, str], None]] = None, progress_callback: Optional[Callable[[int, int], None]] = None) -> Tuple[List, int]:
@@ -70,136 +97,49 @@ def process_qsos_poland(qsos: List, include_direct_when_no_bureau: bool = False,
             log_callback(level, msg)
         else:
             getattr(logger, level.lower(), logger.info)(msg)
-    
+
     def progress(current: int, total: int) -> None:
         if progress_callback:
             progress_callback(current, total)
-    
+
     log('INFO', f"Processing {len(qsos)} Poland QSOs")
     results = []
-    
+
     qsos_by_call: Dict[str, List] = defaultdict(list)
     for qso in qsos:
         fullcall = str(qso.get("CALL", "")).strip()
         if fullcall:
             qsos_by_call[fullcall].append(qso)
-    
+
     unique_calls = len(qsos_by_call)
     log('INFO', f"  Unique callsigns to check: {unique_calls}")
-    
-    pzk_cache: Dict[str, Optional[Tuple[str, str]]] = {}
-    pzk_error_count = 0
-    pzk_disabled = False
-    
-    checked_count = 0
+
+    if not qsos_by_call:
+        return results, len(qsos)
+
+    try:
+        qsl_list = _fetch_pzk_qsl_list(log)
+        log('INFO', f"  PZK QSL list loaded: {len(qsl_list)} callsigns")
+    except PZKAPIError as e:
+        log('WARNING', f"  PZK result: QSL list lookup error: {e}")
+        log('WARNING', "  PZK QSL list unavailable - ignoring PZK lookups for remaining callsigns")
+        progress(len(qsos), len(qsos))
+        return results, len(qsos)
+
     processed_qsos = 0
     for fullcall, call_qsos in qsos_by_call.items():
-        checked_count += 1
-        if checked_count % 10 == 0:
-            log('INFO', f"  Progress: {checked_count}/{unique_calls} callsigns checked")
+        ot = _lookup_pzk_ot(qsl_list, fullcall)
 
-        if pzk_disabled:
-            for _ in call_qsos:
-                processed_qsos += 1
-                progress(processed_qsos, len(qsos))
-            continue
-        
-        t_call_start = time.perf_counter()
-        try:
-            if fullcall not in pzk_cache:
-                homecall = extract_homecall(fullcall)
-                
-                t_api_start = time.perf_counter()
-                info = _fetch_pzk_member_info(homecall)
-                t_api_end = time.perf_counter()
-                api_time = (t_api_end - t_api_start) * 1000
-                
-                pzk_cache[fullcall] = info
-                
-                t_call_end = time.perf_counter()
-                total_time = (t_call_end - t_call_start) * 1000
-                logger.debug(f"  {fullcall} ({homecall}): total={total_time:.1f}ms (API={api_time:.1f}ms)")
-            else:
-                info = pzk_cache[fullcall]
-            
-            if not info:
-                if include_direct_when_no_bureau:
-                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK, added as direct - {len(call_qsos)} QSO(s)")
-                    for qso in call_qsos:
-                        qso_copy = dict(qso)
-                        qso_copy["QSL_SENT"] = "Y"
-                        qso_copy["QSL_SENT_VIA"] = "D"
-                        qso_copy["QSL_VIA"] = ""
-                        results.append(qso_copy)
-                        processed_qsos += 1
-                        progress(processed_qsos, len(qsos))
-                else:
-                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK - {len(call_qsos)} QSO(s)")
-                    for _ in call_qsos:
-                        processed_qsos += 1
-                        progress(processed_qsos, len(qsos))
-                continue
-            
-            status_text, ot_text = info
-            is_member = "Jest" in status_text
-            via_text = ""
-            if ot_text:
-                via_text = ot_text.split()[0]
-                if via_text.upper().startswith("OT"):
-                    via_text = via_text[2:].strip(".- ")
-            
-            if is_member:
-                if via_text:
-                    log('INFO', f"  PZK result: {fullcall} is a member of PZK via OT-{via_text} - {len(call_qsos)} QSO(s)")
-                else:
-                    log('INFO', f"  PZK result: {fullcall} is a member of PZK - {len(call_qsos)} QSO(s)")
-                
-                if via_text:
-                    for qso in call_qsos:
-                        qso_copy = dict(qso)
-                        qso_copy["QSL_VIA"] = f"OT-{via_text}"
-                        qso_copy["QSL_SENT"] = "Y"
-                        qso_copy["QSL_SENT_VIA"] = "B"
-                        results.append(qso_copy)
-                        processed_qsos += 1
-                        progress(processed_qsos, len(qsos))
-                else:
-                    for qso in call_qsos:
-                        qso_copy = dict(qso)
-                        qso_copy["QSL_SENT"] = "Y"
-                        qso_copy["QSL_SENT_VIA"] = "B"
-                        results.append(qso_copy)
-                        processed_qsos += 1
-                        progress(processed_qsos, len(qsos))
-            else:
-                if include_direct_when_no_bureau:
-                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK, added as direct - {len(call_qsos)} QSO(s)")
-                    for qso in call_qsos:
-                        qso_copy = dict(qso)
-                        qso_copy["QSL_SENT"] = "Y"
-                        qso_copy["QSL_SENT_VIA"] = "D"
-                        qso_copy["QSL_VIA"] = ""
-                        results.append(qso_copy)
-                        processed_qsos += 1
-                        progress(processed_qsos, len(qsos))
-                else:
-                    log('INFO', f"  PZK result: {fullcall} is not a member of PZK - {len(call_qsos)} QSO(s)")
-                    for _ in call_qsos:
-                        processed_qsos += 1
-                        progress(processed_qsos, len(qsos))
-        except PZKAPIError as e:
-            pzk_error_count += 1
-            log('WARNING', f"  PZK result: {fullcall} lookup error: {e}")
-            if pzk_error_count >= 3 and not pzk_disabled:
-                pzk_disabled = True
-                log('WARNING', "  PZK API returned errors 3 times - ignoring PZK lookups for remaining callsigns")
-            for _ in call_qsos:
-                processed_qsos += 1
-                progress(processed_qsos, len(qsos))
-        except Exception as e:
-            log('WARNING', f"  PZK result: {fullcall} lookup error: {e}")
-            for _ in call_qsos:
-                processed_qsos += 1
-                progress(processed_qsos, len(qsos))
-    
+        if ot:
+            log('INFO', f"  PZK result: {fullcall} is a member of PZK via OT-{ot} - {len(call_qsos)} QSO(s)")
+            results.extend(mark_qsos_to_send(call_qsos, 'B', f"OT-{ot}"))
+        elif include_direct_when_no_bureau:
+            log('INFO', f"  PZK result: {fullcall} is not a member of PZK, added as direct - {len(call_qsos)} QSO(s)")
+            results.extend(mark_qsos_to_send(call_qsos, 'D'))
+        else:
+            log('INFO', f"  PZK result: {fullcall} is not a member of PZK - {len(call_qsos)} QSO(s)")
+
+        processed_qsos += len(call_qsos)
+        progress(processed_qsos, len(qsos))
+
     return results, len(qsos)

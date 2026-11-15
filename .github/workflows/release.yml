@@ -47,8 +47,26 @@ jobs:
           git fetch origin master --depth=1
           git merge-base --is-ancestor "$GITHUB_SHA" "origin/master"
 
-  build_deb:
+      - run: python packaging/changelog.py check "${{ steps.version.outputs.version }}"
+
+  tests:
     needs: validate_tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - run: python -m pytest
+
+  build_deb:
+    needs: [validate_tag, tests]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -62,7 +80,7 @@ jobs:
 
       - run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir --target vendor pyhamtools==0.12.0 'adif-io>=0.2.5'
+          pip install --no-cache-dir --target vendor 'adif-io>=0.2.5'
 
       - run: |
           VERSION="${{ needs.validate_tag.outputs.version }}"
@@ -112,10 +130,8 @@ jobs:
 
           install -Dm644 debian/control "$PKGROOT/DEBIAN/control"
           sed -i "s/__VERSION__/${VERSION}/g" "$PKGROOT/DEBIAN/control"
-          install -Dm644 debian/changelog "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
-          sed -i "s/__VERSION__/${VERSION}/g" "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
-          sed -i "s/__DATE_RFC2822__/$(date -R)/g" "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
-          gzip -n -f "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
+          python packaging/changelog.py debian "$VERSION" > "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
+          gzip -n -9 -f "$PKGROOT/usr/share/doc/qslmaster/changelog.Debian"
           install -Dm644 debian/copyright "$PKGROOT/usr/share/doc/qslmaster/copyright"
 
           chmod 0755 "$PKGROOT/DEBIAN"
@@ -127,7 +143,7 @@ jobs:
           path: qslmaster_${{ needs.validate_tag.outputs.version }}-1_*_amd64.deb
 
   build_windows:
-    needs: validate_tag
+    needs: [validate_tag, tests]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -145,8 +161,8 @@ jobs:
           python packaging/windows/build_icon.py
 
       - run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --collect-data pyhamtools --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster_cli/resources/fonts/NimbusSans-Regular.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster_cli/resources/fonts/NimbusSans-Bold.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster.ico;." --name qslmaster packaging/windows/entry_gui.py
-          pyinstaller --noconfirm --clean --onefile --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --collect-data pyhamtools --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster_cli/resources/fonts/NimbusSans-Regular.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster_cli/resources/fonts/NimbusSans-Bold.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster.ico;." --name qslmaster-cli packaging/windows/entry_cli.py
+          pyinstaller --noconfirm --clean --onefile --windowed --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster_cli/resources/fonts/NimbusSans-Regular.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster_cli/resources/fonts/NimbusSans-Bold.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster.ico;." --name qslmaster packaging/windows/entry_gui.py
+          pyinstaller --noconfirm --clean --onefile --icon qslmaster.ico --paths . --collect-submodules qslmaster_gui --collect-submodules qslmaster_cli --add-data "qslmaster_gui/resources/icon.png;." --add-data "qslmaster_cli/resources/fonts/NimbusSans-Regular.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster_cli/resources/fonts/NimbusSans-Bold.ttf;qslmaster_cli/resources/fonts" --add-data "qslmaster.ico;." --name qslmaster-cli packaging/windows/entry_cli.py
 
       - shell: pwsh
         run: |
@@ -175,7 +191,7 @@ jobs:
           path: dist_installer/qslmaster-${{ needs.validate_tag.outputs.version }}-windows-x86_64-setup.exe
 
   build_arch:
-    needs: validate_tag
+    needs: [validate_tag, tests]
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -214,6 +230,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -226,7 +248,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
+          python packaging/changelog.py notes "${{ needs.validate_tag.outputs.version }}" > release_notes.md
           mapfile -d '' files < <(find artifacts -type f -print0 | sort -z)
           gh release create "$GITHUB_REF_NAME" "${files[@]}" \
             --title "QSLMaster ${{ needs.validate_tag.outputs.version }}" \
-            --generate-notes
+            --notes-file release_notes.md
