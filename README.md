@@ -25,7 +25,7 @@ Download QSO data from Wavelog or a local ADIF file and prepare ADIF output and 
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - Wavelog 2.0.0 or higher for API v1 keys, Wavelog 3.1.0 or higher for API v2 tokens (only when using `source: wavelog`)
 - CLI dependencies in requirements.txt
 - GUI dependencies in requirements-gui.txt
