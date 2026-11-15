@@ -71,9 +71,9 @@ class PdfOptionsDialog(QDialog):
         layout.addWidget(self.draw_borders_checkbox)
 
         header_layout = QHBoxLayout()
-        header_layout.addWidget(QLabel("Page setup:"))
+        header_layout.addWidget(QLabel("Page Setup:"))
         header_layout.addStretch()
-        self.add_page_button = QPushButton("Add page")
+        self.add_page_button = QPushButton("Add Page")
         self.add_page_button.clicked.connect(self.add_page_row)
         header_layout.addWidget(self.add_page_button)
         layout.addLayout(header_layout)
@@ -93,7 +93,7 @@ class PdfOptionsDialog(QDialog):
         layout.addWidget(self.scroll_area)
 
         note_label = QLabel(
-            f"Offset means how many labels are already used at the start of the page. In Skip labels, enter label numbers that should stay empty, from 1 to {self.labels_per_page}, separated with commas. Labels are numbered from left to right, then row by row from top to bottom."
+            f"Offset is the number of labels already used at the start of the page. In Skip labels, enter the numbers of labels that should stay empty (1 to {self.labels_per_page}), separated by commas. Labels are numbered from left to right, row by row from the top."
         )
         note_label.setWordWrap(True)
         layout.addWidget(note_label)

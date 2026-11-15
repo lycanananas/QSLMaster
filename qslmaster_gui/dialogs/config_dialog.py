@@ -5,8 +5,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QGroupBox, QComboBox, QMessageBox, QFileDialog,
-    QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QWidget
+    QPushButton, QGroupBox, QComboBox, QFileDialog,
+    QListWidget, QListWidgetItem, QSizePolicy, QPlainTextEdit, QWidget
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen
@@ -18,6 +18,7 @@ from qslmaster_gui.utils.config_manager import (
 from qslmaster_cli.country_file import list_all_dxcc_entities
 from qslmaster_cli.wavelog import is_wavelog_api_v2_key, create_wavelog_api, WavelogAuthError, WAVELOG_API_V2_REQUIRED_SCOPES, WAVELOG_API_V2_MARK_AS_SENT_SCOPE
 from qslmaster_gui.workers.task_worker import TaskWorker
+from qslmaster_gui.utils.messages import ask_yes_no, show_error, show_info, show_warning
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +225,7 @@ class ConfigDialog(QDialog):
         callsign_filter_group = QGroupBox("Callsign Filter (Optional)")
         callsign_filter_layout = QVBoxLayout()
 
-        callsign_filter_layout.addWidget(QLabel("Filter mode:"))
+        callsign_filter_layout.addWidget(QLabel("Filter Mode:"))
         self.callsign_filter_mode_combo = QComboBox()
         self.callsign_filter_mode_combo.addItem("Disabled", "off")
         self.callsign_filter_mode_combo.addItem("Only listed callsigns", "allow")
@@ -233,12 +234,12 @@ class ConfigDialog(QDialog):
         callsign_filter_layout.addWidget(self.callsign_filter_mode_combo)
 
         callsign_filter_note = QLabel(
-            "Matched against normalized callsign. Use one exact callsign per line. Wildcards are not supported. For example: SP3ABC, 3Z3Z3Z."
+            "Callsigns are compared after normalization. Enter one exact callsign per line, for example SP3ABC or 3Z3Z3Z. Wildcards are not supported."
         )
         callsign_filter_note.setWordWrap(True)
         callsign_filter_layout.addWidget(callsign_filter_note)
 
-        self.callsign_filter_patterns_input = QTextEdit()
+        self.callsign_filter_patterns_input = QPlainTextEdit()
         self.callsign_filter_patterns_input.setPlaceholderText("SP3ABC\n3Z3Z3Z")
         self.callsign_filter_patterns_input.setMinimumHeight(120)
         self.callsign_filter_patterns_input.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -301,11 +302,11 @@ class ConfigDialog(QDialog):
         wavelog_url = self.wavelog_url_input.text().strip()
         api_key = self.api_key_input.text().strip()
         if not wavelog_url or not api_key:
-            QMessageBox.warning(self, "Wavelog API Key Test", "Enter Wavelog URL and API key first.")
+            show_warning(self, "Wavelog API Key Test", "Enter the Wavelog URL and API key first.")
             return
 
         self.api_key_test_btn.setEnabled(False)
-        self.api_key_test_btn.setText("Testing")
+        self.api_key_test_btn.setText("Testing...")
         self.api_key_test_worker = TaskWorker(lambda worker: create_wavelog_api(wavelog_url, api_key).test_access())
         self.api_key_test_worker.succeeded.connect(self.on_api_key_test_succeeded)
         self.api_key_test_worker.failed.connect(self.on_api_key_test_failed)
@@ -321,24 +322,22 @@ class ConfigDialog(QDialog):
         if not self.isVisible():
             return
         if isinstance(error, WavelogAuthError):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Wavelog API Key Test",
                 f"Permission error:\n{error}\n\nUse API Key Help to check the required permissions."
             )
         else:
-            QMessageBox.warning(self, "Wavelog API Key Test", f"Connection failed:\n{error}")
+            show_warning(self, "Wavelog API Key Test", f"Connection failed:\n{error}")
 
     def on_api_key_test_succeeded(self, result):
         if not self.isVisible():
             return
-        message_box = QMessageBox(QMessageBox.Icon.Information, "Wavelog API Key Test", build_api_key_test_summary(result), QMessageBox.StandardButton.Ok, self)
-        message_box.setTextFormat(Qt.TextFormat.RichText)
-        message_box.exec()
+        show_info(self, "Wavelog API Key Test", build_api_key_test_summary(result), rich=True)
 
     def show_api_key_help(self):
         scopes = ", ".join(f"<code>{scope}</code>" for scope in WAVELOG_API_V2_REQUIRED_SCOPES)
-        QMessageBox.information(
+        show_info(
             self,
             "Wavelog API Key Help",
             "<p>QSLMaster supports both Wavelog API versions. The version is detected "
@@ -361,6 +360,7 @@ class ConfigDialog(QDialog):
             "<p>QSLMaster only reads stations and QSOs. Your Wavelog log is changed only when you "
             "explicitly use Mark as Sent in Wavelog, which requires an API v2 token with the "
             f"<code>{WAVELOG_API_V2_MARK_AS_SENT_SCOPE}</code> scope.</p>",
+            rich=True,
         )
 
     def get_callsign_filter_mode(self) -> str:
@@ -396,7 +396,7 @@ class ConfigDialog(QDialog):
             entities = ConfigDialog._dxcc_entities_cache
         except Exception as e:
             logger.error(f"Failed to load DXCC list: {e}")
-            QMessageBox.warning(self, "DXCC List Error", f"Could not load DXCC list: {e}")
+            show_warning(self, "DXCC List Error", f"Could not load DXCC list: {e}")
             return
 
         for entity in entities:
@@ -587,14 +587,7 @@ class ConfigDialog(QDialog):
     def save_config(self):
         config_id = self.config_combo.currentData()
         if config_id:
-            reply = QMessageBox.question(
-                self,
-                "Confirm Save",
-                f"Update configuration '{self.config_combo.currentText()}'?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-
-            if reply != QMessageBox.StandardButton.Yes:
+            if not ask_yes_no(self, "Confirm Save", f"Update configuration '{self.config_combo.currentText()}'?"):
                 return
 
             if update_config(
@@ -611,11 +604,11 @@ class ConfigDialog(QDialog):
                 logo_file = self.logo_input.text().strip()
                 if logo_file:
                     if not _save_logo_file(config_id, logo_file):
-                        QMessageBox.warning(self, "Warning", "Configuration saved but logo upload failed")
+                        show_warning(self, "Warning", "Configuration saved, but the logo could not be saved.")
                         return
-                QMessageBox.information(self, "Success", "Configuration saved")
+                show_info(self, "Success", "Configuration saved.")
             else:
-                QMessageBox.critical(self, "Error", "Failed to save configuration")
+                show_error(self, "Error", "Failed to save the configuration.")
         else:
             self.save_config_as()
 
@@ -623,7 +616,7 @@ class ConfigDialog(QDialog):
         name_dialog = QDialog(self)
         name_dialog.setWindowTitle("New Configuration")
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Configuration name:"))
+        layout.addWidget(QLabel("Configuration Name:"))
         name_input = QLineEdit()
         layout.addWidget(name_input)
 
@@ -669,37 +662,30 @@ class ConfigDialog(QDialog):
             logo_file = self.logo_input.text().strip()
             if logo_file:
                 if not _save_logo_file(config_id, logo_file):
-                    QMessageBox.warning(self, "Warning", "Configuration created but logo upload failed")
+                    show_warning(self, "Warning", "Configuration created, but the logo could not be saved.")
                     return
             
             self.load_configs()
             idx = self.config_combo.findData(config_id)
             if idx >= 0:
                 self.config_combo.setCurrentIndex(idx)
-            QMessageBox.information(self, "Success", f"Configuration '{name}' created")
+            show_info(self, "Success", f"Configuration '{name}' created.")
             set_current_config_id(config_id)
             if self.on_config_created:
                 self.on_config_created(config_id)
         else:
-            QMessageBox.critical(self, "Error", "Failed to create configuration")
+            show_error(self, "Error", "Failed to create the configuration.")
 
     def delete_config(self):
         config_id = self.config_combo.currentData()
         if not config_id:
             return
 
-        reply = QMessageBox.question(
-            self,
-            "Confirm Delete",
-            f"Delete configuration '{self.config_combo.currentText()}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
+        if ask_yes_no(self, "Confirm Delete", f"Delete configuration '{self.config_combo.currentText()}'?"):
             if delete_config(config_id):
                 self.load_configs()
-                QMessageBox.information(self, "Success", "Configuration deleted")
+                show_info(self, "Success", "Configuration deleted.")
                 if self.on_config_deleted:
                     self.on_config_deleted(config_id)
             else:
-                QMessageBox.critical(self, "Error", "Failed to delete configuration")
+                show_error(self, "Error", "Failed to delete the configuration.")

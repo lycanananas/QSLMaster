@@ -64,3 +64,33 @@ def test_mark_sent_button_has_no_tooltip_or_ellipsis(app):
     assert tab.mark_sent_button.text() == 'Mark as Sent in Wavelog'
     assert tab.mark_sent_button.toolTip() == ''
     tab.shutdown()
+
+
+def test_processing_log_shows_html_as_plain_text(app):
+    from qslmaster_gui.widgets.processing_tab import ProcessingTab
+    tab = ProcessingTab()
+    tab.on_log('ERROR', 'HTTP 500: <html><body><b>Fatal error</b></body></html>')
+    assert '<b>Fatal error</b>' in tab.log_output.toPlainText()
+    tab.shutdown()
+
+
+def test_message_boxes_use_explicit_text_format(app, monkeypatch):
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QMessageBox
+    from qslmaster_gui.utils import messages
+
+    seen = []
+
+    def fake_exec(box):
+        seen.append((box.textFormat(), box.text()))
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, 'exec', fake_exec)
+    messages.show_error(None, 'Error', '<b>server says</b>')
+    messages.show_info(None, 'Help', '<p>trusted</p>', rich=True)
+    assert messages.ask_yes_no(None, 'Confirm', "Delete configuration '<i>x</i>'?") is True
+    assert seen == [
+        (Qt.TextFormat.PlainText, '<b>server says</b>'),
+        (Qt.TextFormat.RichText, '<p>trusted</p>'),
+        (Qt.TextFormat.PlainText, "Delete configuration '<i>x</i>'?"),
+    ]
