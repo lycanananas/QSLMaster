@@ -13,7 +13,8 @@ This file is the single source for GitHub release notes and the Debian package c
 - Test Key button and API Key Help in the settings dialog, including the required API v2 scopes.
 - Clear Wavelog permission errors: missing scopes, invalid or expired tokens are shown in the station list, in Test Key and when downloading the log.
 - Local cache of the PZK QSL bureau list, used automatically when the PZK server is unavailable.
-- Offline unit test suite (pytest) and a CI workflow running it on every push and pull request.
+- "From:" line on PDF labels with the station callsign the QSO was made with (`STATION_CALLSIGN`, e.g. `LZ/SP3ABC`), so cards sent for QSOs made abroad or under a special callsign show the correct station.
+- Offline unit test suite (pytest) and a CI workflow running it on pull requests.
 - `CHANGELOG.md` and an automated Debian changelog and GitHub release notes generated from it.
 
 ### Changed
@@ -21,7 +22,7 @@ This file is the single source for GitHub release notes and the Debian package c
 - Network calls in the GUI (station list, Test Key, Mark as Sent) run in the background, so the window no longer freezes on a slow server.
 - An empty result from Wavelog is no longer an error, the run finishes with an empty output.
 - Wavelog connection errors are reported with the actual reason instead of a generic health check failure, and the station list is requested only once per run.
-- Minimum supported Python version is 3.9.
+- Minimum supported Python version is 3.10.
 - The processing core is split into smaller modules (filters, label sorting, ADIF files, country file, Wavelog, mark as sent).
 - README commands use `python -m qslmaster_cli.main` and `python -m qslmaster_gui.main`.
 
